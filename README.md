@@ -172,35 +172,21 @@ La clave API sigue en `localStorage`. El **perfil** — canales descubiertos,
 suscripciones, temas, intereses, «me gusta» — vive en una hoja de cálculo, así
 que sobrevive al borrado del navegador y sigue a todos tus dispositivos.
 
-La hoja **no necesita ser pública**. El script se ejecuta con tu propia
-autorización (*ejecutar como: yo*), así que accede a una hoja privada sin
-problema. Déjala privada.
+La hoja es **pública** por decisión deliberada: el perfil lo puede leer
+cualquiera con el enlace. Eso simplifica todo — el ID de la hoja no es un
+secreto y va escrito directamente en `Code.gs`.
 
 ### Puesta en marcha
 
-**No hay nada que configurar en `Code.gs`.**
-
 1. [script.google.com](https://script.google.com) → Nuevo proyecto → pega
    [apps-script/Code.gs](apps-script/Code.gs).
-2. Ejecuta la función `setup()` una vez. Concede los permisos; el script
-   **crea la hoja él mismo** («Shorts FR — profil») en tu Drive, guarda su ID
-   en las propiedades del script y escribe la dirección en el registro.
-3. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
+2. Pon el ID de tu hoja en `SHEET_ID` (está en su URL:
+   `/spreadsheets/d/<ID>/edit`).
+3. Ejecuta `setup()` una vez: concede los permisos y crea las pestañas.
+4. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
    acceso *cualquier persona*. Copia la URL `.../exec`.
-4. Pega esa URL en la app — ya en la pantalla de inicio, o después en Ajustes →
-   Sincronización → **Connecter**. Ahí aparece un enlace directo a tu hoja.
-
-### Usar una hoja que ya tienes
-
-Si prefieres una hoja concreta, no hace falta escribir su ID en el archivo
-(cosa poco deseable en un repo público). Se apunta una sola vez desde el editor:
-
-```js
-function go() { useSheet('1AbC…'); }   // acepta el ID o la URL entera
-```
-
-El ID queda en las propiedades del script, no en git. `forgetSheet()` deshace
-el enlace y hace que el siguiente arranque cree una hoja nueva.
+5. Pega esa URL en la app — en la pantalla de inicio, o en Ajustes →
+   Sincronización → **Connecter**. Ahí queda un enlace directo a la hoja.
 
 > **Al modificar `Code.gs` hay que volver a desplegar.** La URL `/exec` apunta a
 > una **versión congelada** del script: guardar en el editor no cambia nada de
@@ -208,16 +194,16 @@ el enlace y hace que el siguiente arranque cree una hoja nueva.
 > → ✏️ → Versión: **Nueva versión** → Implementar*. La URL no cambia. Es el
 > error más fácil de cometer y el más difícil de diagnosticar.
 
-### Sin autenticación: la URL *es* la contraseña
+### Sin autenticación
 
-No hay token. Google no lo pide y para un solo usuario no aporta gran cosa: la
-URL `/exec` ya contiene un identificador largo e imposible de adivinar
-(`/macros/s/AKfycb…/exec`). Trátala como una contraseña — no la publiques.
+No hay token: Google no lo pide, y siendo la hoja pública no protegería nada
+que no esté ya a la vista. Lo único que sí quité del alcance de la URL `/exec`
+es la operación destructiva: `resetProfile()` **no está expuesta por HTTP** y
+solo se ejecuta desde el editor de Apps Script.
 
-Lo que sí hice es quitar la única operación destructiva del alcance de esa URL:
-`resetProfile()` ya **no está expuesta por HTTP** y solo se ejecuta desde el
-editor de Apps Script. Así, quien conociera la URL podría leer o sobrescribir
-el perfil, pero no borrar la hoja.
+Una única precaución, y es funcional más que de privacidad: que sea pública
+**en lectura**. Si la dejas editable por cualquiera, un desconocido podría
+corromper el perfil.
 
 ### Arquitectura: local-first
 
