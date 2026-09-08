@@ -14,6 +14,10 @@
      pour apple-touch-icon), et `black-translucent` fait passer le contenu sous
      la barre d'état — d'où les marges `env(safe-area-inset-*)` du CSS. -->
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<!-- Surcharge personnelle : ce fichier n'est pas versionné (.gitignore). S'il
+     existe, Safari retient la dernière déclaration ; sinon elle échoue en 404
+     et l'icône du dépôt reprend la main. -->
+<link rel="apple-touch-icon" href="icons/custom-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

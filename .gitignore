@@ -1,1 +1,5 @@
 .DS_Store
+
+# Icône personnelle : déposer un PNG opaque de 180×180 sous ce nom et il
+# remplace celle du dépôt, sans être versionné. Voir README « Icône ».
+icons/custom-touch-icon.png

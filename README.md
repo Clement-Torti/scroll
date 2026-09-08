@@ -134,6 +134,36 @@ Dos detalles que importan: Safari **ignora el SVG** para `apple-touch-icon`
 contenido pase por debajo de la barra de estado — de ahí los márgenes
 `env(safe-area-inset-*)` en el CSS.
 
+### Poner tu propio icono
+
+`icons/custom-touch-icon.png` está en `.gitignore` y, si existe, gana sobre el
+del repo. Para usarlo solo en local:
+
+```bash
+cp ~/mi-icono.png icons/custom-touch-icon.png   # PNG opaco, 180×180
+python3 -m http.server 8080
+```
+
+Para que aparezca también en el sitio publicado hay que **servirlo**, es decir
+versionarlo — quitando esa línea del `.gitignore` y comiteándolo. En ese
+momento el archivo pasa a estar público y lo descarga cualquiera que visite la
+página, así que es una decisión distinta de «el icono de mi teléfono»:
+
+```bash
+sed -i '' '/custom-touch-icon/d' .gitignore
+git add -f icons/custom-touch-icon.png && git commit -m "icône perso" && git push
+```
+
+### La vía Atajos (icono libre, sin tocar el repo)
+
+La app **Atajos** permite un icono arbitrario desde tu carrete, sin publicar
+nada: nuevo atajo → acción *Abrir URL* → tu URL → ⓘ → *Añadir a pantalla de
+inicio* → tocar la miniatura → *Elegir foto* → nombre y listo.
+
+El coste es real: un atajo abre en Safari con un banner, no en modo
+`standalone`. Pierdes la sensación de app nativa. Si quieres icono propio **y**
+pantalla completa, el archivo tiene que estar servido — no hay tercera vía.
+
 ---
 
 ## Perfil en una Google Sheet (Apps Script)
