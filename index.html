@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0b0b16">
 <meta name="description" content="Un feed vertical infini de Shorts YouTube 100% en français.">
 <title>Shorts FR</title>
-<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<!-- Pas de favicon SVG : Chrome et Firefox le préfèrent aux PNG quand les deux
+     sont déclarés, ce qui écraserait l'icône ci-dessous. `icons/icon.svg` est
+     conservé dans le dépôt à titre de trace du dessin d'origine, non utilisé. -->
+<link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
 <link rel="manifest" href="manifest.webmanifest">
 
 <!-- Écran d'accueil iOS : l'icône doit être un PNG opaque (Safari ignore le SVG
      pour apple-touch-icon), et `black-translucent` fait passer le contenu sous
      la barre d'état — d'où les marges `env(safe-area-inset-*)` du CSS. -->
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
-<!-- Surcharge personnelle : ce fichier n'est pas versionné (.gitignore). S'il
-     existe, Safari retient la dernière déclaration ; sinon elle échoue en 404
-     et l'icône du dépôt reprend la main. -->
-<link rel="apple-touch-icon" href="icons/custom-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

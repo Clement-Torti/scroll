@@ -116,53 +116,57 @@ el coste de 8 recargas cae de 1560 u a 4 u.
   a demanda o dejar de seguirlos.
 - Seguir un canal lo marca como francés validado y lo prioriza en el pool.
 
-## Icono en la pantalla de inicio (iOS)
+## Iconos
 
-Al añadir la página a la pantalla de inicio, se comporta como una app: sin
-barras de Safari (`display: standalone`), orientación vertical, y un icono
-propio en `icons/`. El icono es un diseño original — un triángulo de play con
-la bandera francesa — generado desde [icons/icon.svg](icons/icon.svg):
+Al añadir la página a la pantalla de inicio se comporta como una app: sin
+barras de Safari (`display: standalone`), orientación vertical, e icono propio.
+
+Todos los tamaños se derivan de un único origen, `icons/icon-source.png`
+(copia intacta del icono de 180×180). Para regenerarlos tras cambiarlo:
 
 ```bash
-for SZ in 1024 512 192 180 32; do
-  magick -background "#0b0b12" icons/icon.svg -resize ${SZ}x${SZ} -flatten -alpha off -depth 8 out-${SZ}.png
+S=icons/icon-source.png
+BG=$(magick "$S" -format "%[pixel:p{14,90}]" info:)      # fondo real del icono
+
+for SZ in 16 32 48; do                                    # favicons, con alfa
+  magick "$S" -filter Lanczos -resize ${SZ}x${SZ} -strip icons/favicon-${SZ}.png
 done
+magick icons/favicon-16.png icons/favicon-32.png icons/favicon-48.png icons/favicon.ico
+
+for SZ in 192 512 1024; do                                # manifest, opacos
+  magick "$S" -filter Lanczos -resize ${SZ}x${SZ} -unsharp 0x0.8+0.5+0.02 \
+          -background "$BG" -alpha remove -alpha off -depth 8 -strip icons/icon-${SZ}.png
+done
+
+magick "$S" -filter Lanczos -resize 400x400 -unsharp 0x0.8+0.5+0.02 \
+        -background "$BG" -alpha remove -gravity center -extent 512x512 \
+        -alpha off -depth 8 -strip icons/icon-maskable-512.png
+
+magick "$S" -background "$BG" -alpha remove -alpha off -depth 8 -strip icons/apple-touch-icon.png
 ```
 
-Dos detalles que importan: Safari **ignora el SVG** para `apple-touch-icon`
-(hace falta un PNG opaco de 180×180), y `black-translucent` hace que el
-contenido pase por debajo de la barra de estado — de ahí los márgenes
-`env(safe-area-inset-*)` en el CSS.
+| Archivo | Uso |
+|---|---|
+| `icon-source.png` | origen intacto, no se sirve |
+| `favicon.ico` (16/32/48) | pestañas, marcadores, navegadores antiguos |
+| `favicon-16/32/48.png` | pestañas modernas |
+| `apple-touch-icon.png` | pantalla de inicio iOS, 180×180 opaco |
+| `icon-192/512/1024.png` | manifest, `purpose: any` |
+| `icon-maskable-512.png` | manifest, `purpose: maskable` |
+| `icon.svg` | diseño original, conservado sin usar |
 
-### Poner tu propio icono
+Cuatro detalles que importan y que no son evidentes:
 
-`icons/custom-touch-icon.png` está en `.gitignore` y, si existe, gana sobre el
-del repo. Para usarlo solo en local:
-
-```bash
-cp ~/mi-icono.png icons/custom-touch-icon.png   # PNG opaco, 180×180
-python3 -m http.server 8080
-```
-
-Para que aparezca también en el sitio publicado hay que **servirlo**, es decir
-versionarlo — quitando esa línea del `.gitignore` y comiteándolo. En ese
-momento el archivo pasa a estar público y lo descarga cualquiera que visite la
-página, así que es una decisión distinta de «el icono de mi teléfono»:
-
-```bash
-sed -i '' '/custom-touch-icon/d' .gitignore
-git add -f icons/custom-touch-icon.png && git commit -m "icône perso" && git push
-```
-
-### La vía Atajos (icono libre, sin tocar el repo)
-
-La app **Atajos** permite un icono arbitrario desde tu carrete, sin publicar
-nada: nuevo atajo → acción *Abrir URL* → tu URL → ⓘ → *Añadir a pantalla de
-inicio* → tocar la miniatura → *Elegir foto* → nombre y listo.
-
-El coste es real: un atajo abre en Safari con un banner, no en modo
-`standalone`. Pierdes la sensación de app nativa. Si quieres icono propio **y**
-pantalla completa, el archivo tiene que estar servido — no hay tercera vía.
+- **Nada de favicon SVG.** Chrome y Firefox lo prefieren a los PNG cuando se
+  declaran ambos, así que un `icon.svg` declarado sobrescribiría el favicon
+  por mucho que pongas los PNG debajo. Por eso ya no se declara.
+- Safari **ignora el SVG** para `apple-touch-icon`: exige un PNG de 180×180,
+  y compone mal el canal alfa — de ahí el aplanado sobre el fondo del icono.
+- La variante **maskable** existe porque Android recorta un círculo del 80 %
+  del lado. El glifo se reduce al 78 % para caber en la zona segura; sin eso,
+  se le comerían los bordes.
+- `black-translucent` hace que el contenido pase por debajo de la barra de
+  estado — de ahí los márgenes `env(safe-area-inset-*)` del CSS.
 
 ---
 
