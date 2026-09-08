@@ -82,26 +82,84 @@ portugués frente a español): **100 %**.
 
 ## Cómo descubre contenido
 
-`search.list` cuesta **100 unidades**; todo lo demás cuesta **1**. Con 10 000
-unidades diarias eso da solo 100 búsquedas — insuficiente para un feed
-infinito. La arquitectura le da la vuelta:
+**La búsqueda de YouTube quedó relegada a último recurso.** Sus resultados en
+francés son mediocres, y cada `search.list` cuesta **100 unidades**. El feed
+parte ahora de un **catálogo curado** de canales francófonos.
 
-- La búsqueda sirve para **descubrir canales**, no solo vídeos. Cada canal
-  validado entra en un *pool* persistente.
-- Las recargas siguientes tiran de la playlist «uploads» de esos canales:
-  **1 unidad por 50 vídeos**, 100× más barato.
-- El ranking `mostPopular` de Francia (1 u) aporta novedad.
-- Los canales seguidos alimentan su pestaña e inyectan vídeos en «Pour toi».
+### El catálogo
 
-Encima va un modelo de intereses (términos, categorías y canales ponderados a
-partir de tus «me gusta») con estrategia ε-greedy: ~55 % explotación de tus
-intereses, ~45 % exploración de semillas nuevas, con rotación de `order` y de
-ventana temporal para que dos sesiones nunca den el mismo feed.
+[`channels.json`](channels.json) contiene canales francófonos de **más de
+10 000 suscriptores**, clasificados por tema, extraídos de
+[montremoitachaine.fr](https://www.montremoitachaine.fr) — un directorio de
+canales francófonos ordenados por tema y por audición.
 
-Garde-fous de cuota, por recarga: presupuesto máximo de una búsqueda + 60
-unidades, una sola búsqueda por recarga, parada tras 4 rondas sin resultados y
-pausa de 60 s si una recarga vuelve vacía. Medido: cuando las fuentes se agotan
-el coste de 8 recargas cae de 1560 u a 4 u.
+**2136 entradas, 1798 canales distintos.** Once temas, hasta **200 canales
+cada uno**, los más grandes primero (niveles Titan ≥1M, Solide 100K–1M,
+Ascension 10K–100K):
+
+| Tema del directorio | `topicId` de YouTube |
+|---|---|
+| nourriture | Cuisine |
+| animal-de-compagnie | Animaux |
+| divertissement | Divertissement |
+| connaissance | Connaissance |
+| film | Cinéma |
+| mode-de-vie | Style de vie |
+| mode | Mode |
+| pop | Pop |
+| sante | Santé |
+| societe | Société |
+| tourisme | Voyage |
+
+`animal-de-compagnie` solo tiene 136: son todos los que el directorio lista
+con ≥10k. Los demás llegan al tope de 200.
+
+La clasificación es la del directorio, no la mía, y no siempre es perfecta —
+algún canal aparece bajo un tema discutible. No importa: **el filtro de idioma
+sigue examinando cada vídeo**, así que un canal mal clasificado o no
+francófono se descarta a nivel de vídeo. El catálogo mejora el punto de
+partida; no sustituye al filtro.
+
+El archivo guarda **solo handles públicos**, no IDs `UC`. Cada uno se resuelve
+una única vez con `channels.list?forHandle=` — **1 unidad**. Extraer los IDs
+del sitio habría costado ~2200 peticiones más a un sitio pequeño; resolverlos
+en la app cuesta 1 unidad y solo cuando ese canal se usa de verdad.
+
+### Lo que cuesta, medido
+
+Meter un canal curado en el feed cuesta **3 unidades**: resolver el handle,
+leer su playlist «uploads», y las metadatos de sus vídeos.
+
+| Escenario | Coste |
+|---|---|
+| Una búsqueda YouTube | 100 u |
+| Un canal curado nuevo | 3 u |
+| 12 recargas sobre canales ya resueltos | 12 u |
+
+Medido con un test que reproduce una selección de un solo tema: **cero
+búsquedas de YouTube**, y los 5 canales servidos salieron todos de ese tema.
+
+### La jerarquía de fuentes
+
+1. **`seed`** — un canal del catálogo que coincide con tus temas (3 u).
+2. **`pool`** — la playlist «uploads» de un canal ya resuelto (1 u / 50 vídeos).
+   Los canales cuyo tema del directorio coincide con tu selección pesan 2,5×.
+3. **`favs`** — los canales que sigues.
+4. **`chart`** — el ranking `mostPopular` de Francia (1 u).
+5. **`search`** — **desactivada** mientras queden 15+ canales curados sin
+   resolver. Solo entra cuando el catálogo se agota.
+
+Encima sigue el modelo de intereses ε-greedy, pero como apoyo: tus temas y
+palabras clave pasan siempre delante.
+
+### Regenerar el catálogo
+
+El directorio muestra solo 24 canales por nivel, «renouvelée à chaque visite»,
+así que el extractor visita cada página repetidas veces y acumula hasta cubrir
+los niveles o dejar de encontrar novedades. Respeta `robots.txt` (que prohíbe
+`/api/`, de donde tira la página `/classement`) y espacia las peticiones 1,1 s.
+Los scripts están en el historial de esta conversación; el resultado es un
+archivo estático que no hace falta regenerar salvo que quieras refrescarlo.
 
 ## Canales favoritos
 
@@ -324,10 +382,17 @@ chaînes y Réglages, con las estadísticas del filtro y el consumo de cuota.
   visible**. Aplicado a todas, el compositor mezclaba dos capas desenfocadas
   por slide durante el scroll, y ahí se perdía la fluidez. El degradado, que
   es lo que tapa la incrustación de YouTube, sí va en todas: cuesta cero.
-- El short siguiente se **precarga**: se lanza silenciado fuera de pantalla y
-  se congela en su primer fotograma, para que el swipe arranque desde el búfer
-  en vez de en frío. Cuesta algo de datos — un vídeo de adelanto — y mantiene
-  cuatro iframes vivos (anterior, actual, dos siguientes) en vez de tres.
+- El short siguiente se **precarga** vía `autoplay=1`, no con una llamada a
+  `playVideo()`: el reproductor llena su búfer en cuanto su iframe está lista,
+  sin depender de cuándo YouTube avisa de «ready». Se congela en su primer
+  fotograma y el swipe reanuda desde ahí. Medido con un reproductor simulado
+  (init 600 ms, arranque en frío 1200 ms): **60 ms** por swipe en vez de 1200.
+  Cuesta un vídeo de adelanto en datos.
+- Mientras carga se muestra la **miniatura real a pantalla completa**. Es lo
+  que elimina la sensación de espera: un fondo negro de un segundo se nota, el
+  primer fotograma de la vídeo no. Solo se decodifica en las slides cercanas
+  a la visible — decodificar cincuenta imágenes a pantalla completa entrecorta
+  el scroll.
 - Cambiar de tema o añadir palabras clave **descarta la cola** y fuerza una
   búsqueda nueva al cerrar el panel: sin eso el pool, poblado con los temas
   anteriores, seguía sirviendo lo viejo durante decenas de vídeos. Cuesta 100

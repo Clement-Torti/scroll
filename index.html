@@ -14,6 +14,16 @@
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
 <link rel="manifest" href="manifest.webmanifest">
 
+<!-- Poignées de main TCP/TLS établies avant le premier besoin : le lecteur
+     vient de youtube-nocookie, les vignettes de i.ytimg, le flux vidéo de
+     googlevideo. Autant de centaines de millisecondes retirées du démarrage. -->
+<link rel="preconnect" href="https://www.youtube-nocookie.com" crossorigin>
+<link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+<link rel="preconnect" href="https://rr1---sn-0.googlevideo.com" crossorigin>
+<link rel="dns-prefetch" href="https://googlevideo.com">
+<link rel="dns-prefetch" href="https://www.google.com">
+<link rel="preconnect" href="https://www.googleapis.com" crossorigin>
+
 <!-- Écran d'accueil iOS : l'icône doit être un PNG opaque (Safari ignore le SVG
      pour apple-touch-icon), et `black-translucent` fait passer le contenu sous
      la barre d'état — d'où les marges `env(safe-area-inset-*)` du CSS. -->
@@ -198,14 +208,24 @@ a{color:var(--accent-2)}
 }
 .pwrap{position:absolute;inset:0;background:#000}
 .pwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-/* Vignette d'attente. `filter: blur()` plein écran sur CHAQUE slide faisait
-   repeindre autant de couches floutées à chaque image du défilement ; comme
-   l'iframe la recouvre entièrement dès la lecture, un simple assombrissement
-   donne le même résultat pour rien. */
+/* Vignette d'attente, à pleine opacité : c'est elle qui supprime l'impression
+   d'attente. Un fond noir pendant une seconde se remarque, la première image
+   de la vidéo non — et elle arrive en quelques dizaines de millisecondes
+   depuis le cache d'images de YouTube, contre plusieurs centaines pour le
+   flux vidéo.
+   `background-image` n'est posée que sur les slides proches de l'affichée
+   (cf. ensurePlayers) : décoder cinquante images plein écran hachait le
+   défilement. */
 .poster{
   position:absolute;inset:0;background-size:cover;background-position:center;
-  opacity:.32;transition:opacity .25s;
+  background-color:#000;transition:opacity .22s ease-out;
 }
+/* Pas de `content-visibility` ici. Essayé, puis retiré : la propriété
+   `contain-intrinsic-size` n'accepte pas de pourcentages, si bien que
+   `100% 100%` était rejeté et les slides hors écran s'effondraient à une
+   hauteur nulle — le conteneur perdait sa hauteur et le défilement ne
+   fonctionnait plus du tout. Le vrai coût de peinture venait du décodage des
+   vignettes, et la fenêtre gérée en JS suffit à le supprimer. */
 /* Le lecteur YouTube affiche sa propre incrustation — titre et chaîne en haut,
    libellé « Shorts » en bas — par-dessus la vidéo. On la couvre par deux
    bandes floutées, dimensionnées sur ces zones.
@@ -234,16 +254,6 @@ a{color:var(--accent-2)}
   -webkit-backdrop-filter:blur(12px) saturate(.9);backdrop-filter:blur(12px) saturate(.9);
 }
 .tapzone{position:absolute;inset:0;z-index:5}
-
-/* buffering */
-.spin{
-  position:absolute;top:50%;left:50%;margin:-13px 0 0 -13px;z-index:7;
-  width:26px;height:26px;border-radius:50%;
-  border:2.5px solid rgba(255,255,255,.22);border-top-color:#fff;
-  animation:spin .7s linear infinite;opacity:0;transition:opacity .2s
-}
-.spin.on{opacity:1}
-@keyframes spin{to{transform:rotate(360deg)}}
 
 /* ============================ SLIDE OVERLAY ============================ */
 .info{
@@ -699,6 +709,10 @@ const State = {
   /* Adresse de l'application web Apps Script. La clé API YouTube, elle, ne
      quitte jamais le navigateur : elle n'est pas synchronisée. */
   cloud     : Store.get('cloud', { url: '' }),
+  /* Réserve de chaînes francophones curées (channels.json), en attente de
+     résolution : { handle: { name, tier, cats:[], tried } }. */
+  seeds     : Store.get('seeds', {}),
+  seedsRev  : Store.get('seedsRev', ''),
 };
 
 /** Renseigné par le module Cloud (déclaré plus bas) : chaque écriture locale
@@ -732,6 +746,7 @@ const save = {
   ccache   : () => Store.set('ccache',    trimCache('ccache', 400)),
   cloud    : () => Store.set('cloud',     State.cloud),
   catList  : () => Store.set('catList',   State.catList),
+  seeds    : () => Store.set('seeds',     State.seeds),
 };
 const touch = (section, v) => { onProfileChange(section); return v; };
 function markSeen(id) { if (seenSet.has(id)) return; seenSet.add(id); State.seen.push(id); save.seen(); }
@@ -831,6 +846,12 @@ const Api = (() => {
     chart: 'mostPopular', regionCode: 'FR', maxResults: 50, ...o,
   });
 
+  /** Résout un « handle » public (@nom) en chaîne complète — 1 unité. */
+  const channelByHandle = handle => call('channels', {
+    part: 'snippet,contentDetails,statistics,brandingSettings',
+    forHandle: handle.startsWith('@') ? handle : '@' + handle,
+  });
+
   const channels = ids => call('channels', {
     part: 'snippet,contentDetails,statistics,brandingSettings',
     id: ids.slice(0, 50).join(','), maxResults: 50,
@@ -840,7 +861,7 @@ const Api = (() => {
     part: 'contentDetails', playlistId, maxResults: 50, pageToken,
   });
 
-  return { call, search, videos, chart, channels, playlistItems };
+  return { call, search, videos, chart, channels, channelByHandle, playlistItems };
 })();
 
 /** UCxxxx → UUxxxx : la playlist « toutes les vidéos » d'une chaîne. */
@@ -1159,6 +1180,85 @@ const Lang = (() => {
 
   return { verdict, heuristic, learn, blacklist, whitelist, channelVerdict, initDetector,
            get detectorState() { return detectorState; }, FR_COUNTRIES, THRESHOLD };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+   5 bis. CATALOGUE DE CHAÎNES CURÉES
+   La découverte de YouTube donne des résultats médiocres en français : on
+   part donc d'une liste établie à la main, extraite de montremoitachaine.fr
+   (annuaire de chaînes francophones classées par thème et par audience),
+   restreinte aux chaînes de plus de 10 000 abonnés.
+
+   Le fichier ne contient que des identifiants publics (« handles »), pas
+   d'identifiants UC. Chacun est résolu à la demande par
+   `channels.list?forHandle=` — 1 unité, une seule fois dans la vie de
+   l'application, contre 100 pour une recherche. Faire entrer une chaîne curée
+   dans le feed coûte 3 unités au total : résolution du handle, lecture de sa
+   playlist « uploads », puis métadonnées des vidéos (mesuré).
+   ══════════════════════════════════════════════════════════════════════ */
+const Curated = (() => {
+  /* Thème YouTube associé à chaque rubrique de l'annuaire. */
+  const CAT_TOPIC = {
+    'nourriture'          : '/m/02wbm',   'animal-de-compagnie': '/m/068hy',
+    'divertissement'      : '/m/02jjt',   'connaissance'       : '/m/01k8wb',
+    'film'                : '/m/02vxn',   'mode-de-vie'        : '/m/019_rr',
+    'mode'                : '/m/032tl',   'pop'                : '/m/064t9',
+    'sante'               : '/m/0kt51',   'societe'            : '/m/098wr',
+    'tourisme'            : '/m/07bxq',
+  };
+  const TIER_SCORE = { T: 3.2, S: 2.4, A: 1.6 };   // Titan, Solide, Ascension
+
+  /** Fusionne le catalogue livré avec la réserve locale, sans rien perdre. */
+  async function load() {
+    let data;
+    try {
+      const res = await fetch('channels.json', { cache: 'no-cache' });
+      if (!res.ok) return false;
+      data = await res.json();
+    } catch { return false; }
+    if (!data?.categories) return false;
+    if (data.generated && data.generated === State.seedsRev) return true;   // déjà intégré
+
+    let added = 0;
+    for (const [cat, block] of Object.entries(data.categories)) {
+      const topic = CAT_TOPIC[cat] || block.topic || null;
+      for (const row of block.channels || []) {
+        const [handle, name, tier] = row;
+        if (!handle) continue;
+        const cur = State.seeds[handle];
+        if (cur) {                                  // déjà connu : on complète ses thèmes
+          if (topic && !cur.cats.includes(topic)) cur.cats.push(topic);
+          continue;
+        }
+        State.seeds[handle] = { name: name || handle, tier: tier || 'A',
+                                cats: topic ? [topic] : [], tried: 0 };
+        added++;
+      }
+    }
+    State.seedsRev = data.generated || '1';
+    Store.set('seedsRev', State.seedsRev);
+    save.seeds();
+    if (added) console.info(`[Shorts FR] ${added} chaînes curées ajoutées à la réserve`);
+    return true;
+  }
+
+  /** Handles encore non résolus, en priorité ceux des thèmes retenus. */
+  function pending(topics) {
+    const wanted = new Set(topics || []);
+    const all = [], mine = [];
+    for (const [h, s] of Object.entries(State.seeds)) {
+      if (s.tried) continue;
+      all.push(h);
+      if (wanted.size && s.cats.some(c => wanted.has(c))) mine.push(h);
+    }
+    return mine.length ? mine : all;
+  }
+
+  const scoreOf = h => TIER_SCORE[State.seeds[h]?.tier] || 1.5;
+  const count = () => Object.keys(State.seeds).length;
+  const left = () => Object.values(State.seeds).filter(s => !s.tried).length;
+
+  return { load, pending, scoreOf, count, left, CAT_TOPIC };
 })();
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1569,11 +1669,14 @@ const Discovery = (() => {
       .filter(([id, p]) => p.uploads && Lang.channelVerdict(id) !== 'other' && now - (p.lastPulled || 0) > 90e3);
     if (!cands.length) return [];
     /* pondération : score de langue/appréciation × fraîcheur du dernier tirage */
+    const wanted = new Set(onTopics());
     const chosen = weighted(cands.map(([id, p]) => {
       const rest = Math.min(3, (now - (p.lastPulled || 0)) / 6e5);
       const fav  = State.favorites[id] ? 2 : 1;
       const like = 1 + Math.min(3, (State.interests.chans[id] || 0));
-      return [id, (p.score || .3) * (1 + rest) * fav * like];
+      /* Une chaîne dont l'annuaire annonce un thème retenu passe devant. */
+      const topical = wanted.size && (p.cats || []).some(c => wanted.has(c)) ? 2.5 : 1;
+      return [id, (p.score || .3) * (1 + rest) * fav * like * topical];
     }));
     const p = State.pool[chosen];
     p.lastPulled = now;
@@ -1592,6 +1695,46 @@ const Discovery = (() => {
        est identique — videos.list facture 1 unité jusqu'à 50 identifiants. */
     const ids = (data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean).slice(0, 12);
     return hydrate(ids, p.title ? `chaîne · ${p.title}` : 'chaîne suivie');
+  }
+
+  /**
+   * Réserve curée — 3 u mesurées : résolution du handle, playlist « uploads »,
+   * métadonnées des vidéos. C'est la source principale : l'annuaire est déjà
+   * francophone et trié par thème, là où la recherche YouTube coûte 100 u pour
+   * un résultat approximatif.
+   */
+  async function fromSeeds() {
+    const cands = Curated.pending(onTopics());
+    if (!cands.length) return [];
+    const handle = weighted(cands.map(h => [h, Curated.scoreOf(h)]));
+    const seed = State.seeds[handle];
+    if (!seed) return [];
+    /* Marqué avant l'appel : un handle mort ou renommé ne doit pas être
+       retenté à chaque recharge. */
+    seed.tried = Date.now();
+    save.seeds();
+
+    let data;
+    try { data = await Api.channelByHandle(handle); }
+    catch (e) { if (e.reason === 'quotaExceeded') throw e; return []; }
+    const it = (data.items || [])[0];
+    if (!it) return [];
+
+    const ch = normChannel(it);
+    State.ccache[ch.id] = ch; save.ccache();
+    seed.cid = ch.id;
+    addToPool(ch.id, ch, Curated.scoreOf(handle));
+    /* Les thèmes de l'annuaire enrichissent le pool : ils serviront à
+       privilégier cette chaîne quand l'utilisateur cible ces thèmes. */
+    State.pool[ch.id].cats = seed.cats.slice();
+    save.pool(); save.seeds();
+
+    if (!ch.uploads) return [];
+    let d2;
+    try { d2 = await Api.playlistItems(ch.uploads); }
+    catch (e) { if (e.reason === 'quotaExceeded') throw e; return []; }
+    const ids = (d2.items || []).map(i => i.contentDetails?.videoId).filter(Boolean).slice(0, 12);
+    return hydrate(ids, `annuaire · ${ch.title}`, 'chaîne francophone curée');
   }
 
   /** Classement mostPopular France — 1 u. Peu de Shorts mais 100% FR-région. */
@@ -1635,18 +1778,29 @@ const Discovery = (() => {
   function chooseSource() {
     const poolSize = Object.keys(State.pool).filter(id => State.pool[id].uploads).length;
     const favCount = Object.keys(State.favorites).length;
+    const seedsLeft = Curated.left();
     const left = Quota.left;
 
-    if (forceSearch && left >= COST.search + 60) { forceSearch = false; return 'search'; }
+    if (forceSearch) {
+      forceSearch = false;
+      /* Après un changement de thème, l'annuaire répond mieux qu'une
+           recherche : il est déjà classé par thème. */
+      if (seedsLeft) return 'seed';
+      if (left >= COST.search + 60) return 'search';
+    }
 
-    /* Amorçage : sans pool, seule la recherche peut faire démarrer le feed. */
-    if (poolSize < 5) return left >= COST.search + 60 ? 'search' : 'chart';
+    /* Amorçage : l'annuaire d'abord, la recherche seulement s'il est épuisé. */
+    if (poolSize < 5) return seedsLeft ? 'seed' : (left >= COST.search + 60 ? 'search' : 'chart');
 
-    const canSearch = left >= COST.search + 200;
+    /* La découverte de YouTube est écartée tant que l'annuaire a de la
+       réserve : 100 unités pour un résultat approximatif contre 2 pour une
+       chaîne francophone déjà vérifiée (3 u mesurées). */
+    const canSearch = left >= COST.search + 200 && seedsLeft < 15;
     return weighted([
-      ['search', canSearch ? (poolSize < 30 ? 3.5 : 1.2) : 0],
+      ['seed',   seedsLeft ? 7 : 0],
       ['pool',   6 + Math.min(6, poolSize / 12)],
-      ['chart',  1.1],
+      ['search', canSearch ? 1.2 : 0],
+      ['chart',  seedsLeft ? .4 : 1.1],
       ['favs',   favCount ? 1.6 : 0],
     ]);
   }
@@ -1690,9 +1844,11 @@ const Discovery = (() => {
     if (buffer.length >= want && distinctChannels(buffer) >= MIN_CHANNELS) return drain(want);
     if (Date.now() < dryUntil) return drain(want);
 
-    const tried = { search: 0, pool: 0, chart: 0, favs: 0 };
+    const tried = { seed: 0, search: 0, pool: 0, chart: 0, favs: 0 };
     const startUsed = Quota.used;
-    const BUDGET = COST.search + 60;
+    /* Budget par recharge. Sans réserve curée il faut pouvoir payer une
+       recherche ; avec elle, quelques appels à 1 u suffisent. */
+    const BUDGET = Curated.left() ? 40 : COST.search + 60;
     let rounds = 0, dry = 0;
 
     /* On complète jusqu'à avoir le compte ET la variété. */
@@ -1701,11 +1857,12 @@ const Discovery = (() => {
       rounds++;
       let src = chooseSource();
       /* évite de matraquer une source stérile */
-      if (tried[src] >= (src === 'search' ? 1 : 5)) src = src === 'pool' ? 'chart' : 'pool';
-      tried[src]++;
+      if (tried[src] >= (src === 'search' ? 1 : 6)) src = src === 'pool' ? 'seed' : 'pool';
+      tried[src] = (tried[src] || 0) + 1;
       let batch = [];
       try {
-        if (src === 'search') batch = await fromSearch();
+        if (src === 'seed') batch = await fromSeeds();
+        else if (src === 'search') batch = await fromSearch();
         else if (src === 'pool') batch = await fromPool();
         else if (src === 'chart') batch = await fromChart();
         else batch = await fromFavorites(2);
@@ -1839,7 +1996,8 @@ class Feed {
     this.players = new Map();     // videoId → YT.Player
     this.slides = new Map();      // videoId → element
     this.primed = new Set();      // videoId dont le tampon est amorcé
-    this.pbTimer = 0;             // amorçage différé du suivant
+    this.pbTimer = 0;             // rattrapage d'amorçage
+    this.activePlaying = false;   // la vidéo affichée a-t-elle démarré ?
     this.active = -1;
     this.loading = false;
     this.exhausted = false;
@@ -1908,9 +2066,8 @@ class Feed {
     const conf = Math.round((v.lang?.conf ?? 1) * 100);
 
     s.innerHTML = `
-      <div class="poster" style="background-image:url('${esc(v.thumb)}')"></div>
+      <div class="poster" data-bg="${esc(v.thumb)}"></div>
       <div class="pwrap"><div class="mount"></div></div>
-      <div class="spin"></div>
       <div class="scrim top"></div>
       <div class="scrim bottom"></div>
       <div class="tapzone"></div>
@@ -1988,6 +2145,7 @@ class Feed {
     const prev = this.items[this.active];
     if (prev) { const p = this.players.get(prev.id); if (p) { try { p.pauseVideo(); } catch {} } }
     this.active = idx;
+    this.activePlaying = false;
     const v = this.items[idx];
     if (!v) return;
     for (const [id, el] of this.slides) el.classList.toggle('live', id === v.id);
@@ -2017,29 +2175,60 @@ class Feed {
       keep.add(v.id);
       if (!this.players.has(v.id)) this.createPlayer(v, i === this.active);
     }
+
+    /* Vignettes chargées sur une fenêtre plus large que les lecteurs : elles
+       ne coûtent presque rien et donnent quelque chose à voir tout de suite.
+       Au-delà, la slide sort du rendu. */
+    for (let i = 0; i < this.items.length; i++) {
+      const s = this.slides.get(this.items[i].id);
+      if (!s) continue;
+      const near = i >= this.active - 2 && i <= this.active + 3;
+      const poster = $('.poster', s);
+      if (poster) {
+        const url = poster.dataset.bg;
+        if (near && url && !poster.style.backgroundImage) poster.style.backgroundImage = `url('${url}')`;
+        else if (!near && poster.style.backgroundImage) poster.style.backgroundImage = '';
+      }
+      s.classList.toggle('far', !near);
+    }
     for (const [id, p] of [...this.players]) {
       if (keep.has(id)) continue;
       try { p.destroy(); } catch {}
       this.players.delete(id);
       this.primed.delete(id);
       const s = this.slides.get(id);
-      if (s) { const w = $('.pwrap', s); if (w) w.innerHTML = '<div class="mount"></div>'; }
+      if (s) {
+        const w = $('.pwrap', s);
+        if (w) w.innerHTML = '<div class="mount"></div>';
+        const po = $('.poster', s);
+        if (po) po.style.opacity = '';        // la vignette reprend la main
+      }
     }
   }
 
   /**
-   * Amorce le tampon du lecteur suivant : on le lance en sourdine, et
-   * `onPlayerState` le met en pause dès la première image obtenue.
+   * Amorce le tampon du lecteur suivant.
    *
-   * Appelé seulement une fois la vidéo en cours réellement lancée, et après
-   * un court délai : démarrer l'amorçage dès le swipe revenait à disputer la
-   * bande passante à la vidéo que l'utilisateur attend.
+   * L'amorçage passe d'abord par `autoplay=1` à la création (cf.
+   * createPlayer) : le lecteur remplit son tampon dès que son iframe est
+   * prête, sans qu'on ait à l'appeler. Cette méthode ne sert qu'au rattrapage
+   * — le tout premier lecteur suivant, créé avant que la vidéo en cours ne
+   * démarre, est né avec `autoplay=0` pour ne pas lui voler de débit.
+   *
+   * L'ancienne version reposait sur un minuteur : 250 ms après le démarrage
+   * de la vidéo en cours, elle appelait `playVideo()` sur un lecteur créé au
+   * même instant, donc pas encore prêt. L'appel ne faisait rien, aucun
+   * rattrapage n'était prévu, et plus rien n'était préchargé à partir de la
+   * troisième vidéo.
    */
   prebufferNext() {
     const v = this.items[this.active + 1];
     if (!v || this.primed.has(v.id)) return;
     const p = this.players.get(v.id);
     if (!p?.playVideo) return;
+    let st = null;
+    try { st = p.getPlayerState(); } catch {}
+    if (st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING) return;
     try { p.mute(); p.playVideo(); } catch {}
   }
 
@@ -2048,10 +2237,20 @@ class Feed {
     if (!s || !window.YT?.Player) return;
     const mount = $('.mount', s);
     if (!mount) return;
+    /* `autoplay=1` fait tout le préchargement : le lecteur remplit son tampon
+       dès que son iframe est prête, sans appel de méthode — donc sans dépendre
+       du moment où YouTube signale « ready ». C'est ce qui rend l'amorçage
+       fiable là où un minuteur échouait dès que l'initialisation dépassait
+       250 ms, ce qui est la règle sur mobile.
+       Accordé aussi au lecteur suivant, y compris au premier chargement : le
+       réserver à la vidéo en cours laissait le tout premier swipe démarrer à
+       froid (mesuré : 1 200 ms contre 60). La contrepartie est un partage de
+       débit à l'ouverture, désormais sans conséquence visible puisque la
+       vignette occupe l'écran pendant ce temps. */
     const vars = {
       controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1,
       iv_load_policy: 3, modestbranding: 1, cc_load_policy: 0,
-      autoplay: isActive ? 1 : 0, mute: 1,
+      autoplay: 1, mute: 1,
     };
     if (location.protocol.startsWith('http')) vars.origin = location.origin;
 
@@ -2063,6 +2262,10 @@ class Feed {
           onReady: () => {
             try { p.mute(); } catch {}
             if (this.items[this.active]?.id === v.id) this.playActive();
+            /* Deuxième chance : si ce lecteur est le suivant et que la vidéo
+               en cours tourne déjà, on l'amorce ici. Le minuteur de
+               rattrapage a pu passer avant que YouTube ne soit prêt. */
+            else if (this.items[this.active + 1]?.id === v.id && this.activePlaying) this.prebufferNext();
           },
           onStateChange: e => this.onPlayerState(v, e),
           onError: () => this.onPlayerError(v),
@@ -2075,12 +2278,13 @@ class Feed {
   onPlayerState(v, e) {
     const s = this.slides.get(v.id);
     if (!s) return;
-    const spin = $('.spin', s), poster = $('.poster', s);
+    const poster = $('.poster', s);
     const st = e.data;
-    if (st === YT.PlayerState.BUFFERING) spin?.classList.add('on');
-    else spin?.classList.remove('on');
+    /* Pas d'indicateur de chargement maison : il se superposait à celui du
+       lecteur YouTube. La vignette tient ce rôle, et mieux. */
     if (st === YT.PlayerState.PLAYING) {
       if (this.items[this.active]?.id === v.id) {
+        this.activePlaying = true;
         poster && (poster.style.opacity = '0');
         /* La vidéo en cours tourne : la suivante peut être amorcée sans
            lui voler de débit. */
@@ -2112,7 +2316,6 @@ class Feed {
     markSeen(v.id);
     const s = this.slides.get(v.id);
     if (s) {
-      $('.spin', s)?.classList.remove('on');
       const info = $('.info', s);
       if (info) info.insertAdjacentHTML('afterbegin', '<div class="chip" style="align-self:flex-start">Vidéo indisponible — passage au suivant</div>');
     }
@@ -2874,6 +3077,7 @@ const UI = {
         <div class="kv"><span>Vidéos analysées</span><b>${st.fetched}</b></div>
         <div class="kv"><span>Retenues en français</span><b style="color:var(--accent-2)">${st.keptFr}</b></div>
         <div class="kv"><span>Écartées — langue</span><b>${st.rejectedLang}</b></div>
+        <div class="kv"><span>Chaînes curées en réserve</span><b>${Curated.left()} / ${Curated.count()}</b></div>
         <div class="kv"><span>Quota du jour</span><b>${Quota.used} / ${Quota.limit} u</b></div>
         <div class="meter"><i style="width:${clamp(Quota.used / Quota.limit * 100, 0, 100)}%"></i></div>
       </div>
@@ -2965,13 +3169,24 @@ const UI = {
           ${[30, 60, 90, 180].map(n => `<button data-v="${n}" class="${s.maxSeconds === n ? 'on' : ''}">${n}s</button>`).join('')}
         </div></div>
 
+      <div class="sechead">Annuaire francophone</div>
+      <div class="row"><div class="rx"><div class="rt">Chaînes curées</div>
+        <div class="rd"><b>${Curated.count()}</b> chaînes de plus de 10 000 abonnés, classées par thème (source : montremoitachaine.fr) · <b>${Curated.left()}</b> encore à découvrir.
+        Une chaîne curée entre dans le feed pour 3 unités, contre 100 pour une recherche YouTube.</div></div>
+        <button class="mini" id="resetSeeds">Rejouer</button></div>
+      <div class="row"><div class="rx"><div class="rt">Découverte YouTube</div>
+        <div class="rd">${Curated.left() >= 15
+          ? 'Écartée : l\'annuaire a encore de la réserve et donne de meilleurs résultats en français.'
+          : 'Active en complément, l\'annuaire étant presque épuisé.'}</div></div></div>
+
       <div class="sechead">Quota API</div>
       <div class="row" style="display:block">
         <div class="kv"><span>Utilisé aujourd'hui</span><b>${q.used} / ${q.limit} u</b></div>
         <div class="meter"><i style="width:${clamp(q.used / q.limit * 100, 0, 100)}%"></i></div>
         <div class="kv"><span>Appels API</span><b>${q.calls}</b></div>
         <div class="kv"><span>Recherches (100 u chacune)</span><b>${Discovery.searches}</b></div>
-        <div class="kv"><span>Pool de chaînes découvertes</span><b>${poolN}</b></div>
+        <div class="kv"><span>Pool de chaînes actives</span><b>${poolN}</b></div>
+        <div class="kv"><span>Réserve curée restante</span><b>${Curated.left()}</b></div>
         <div class="rd" style="margin-top:8px">Réinitialisation à minuit heure du Pacifique (≈ 9 h en France). Le pool de chaînes permet de recharger le feed à 1 unité pour 50 vidéos au lieu de 100.</div>
       </div>
 
@@ -3182,6 +3397,12 @@ $('#settingsBody').addEventListener('click', e => {
 
   if (t.id === 'resetLang')  { State.chanLang = {}; save.chanLang(); UI.renderSettings(); UI.toast('Mémoire des chaînes effacée'); return; }
   if (t.id === 'resetSeen')  { State.seen = []; seenSet.clear(); save.seen(); UI.renderSettings(); UI.toast('Historique vidé'); return; }
+  if (t.id === 'resetSeeds') {
+    for (const v of Object.values(State.seeds)) v.tried = 0;
+    save.seeds(); Discovery.resetBackoff(); UI.renderSettings();
+    UI.toast('Annuaire remis à disposition');
+    return;
+  }
   if (t.id === 'resetKey')   { Store.del('key'); State.key = ''; location.reload(); return; }
   if (t.id === 'resetAll') {
     if (!confirm('Effacer abonnements, j\'aime, intérêts et clé API ?')) return;
@@ -3264,6 +3485,10 @@ async function boot() {
     return;
   }
 
+  /* Catalogue de chaînes curées : local, gratuit, et il conditionne la toute
+     première recharge — sans lui on retomberait sur la recherche YouTube. */
+  await Curated.load();
+
   feeds.foryou = new Feed('feed-foryou', async first => {
     const want = first ? 8 : 6;
     return Discovery.collect(want);
@@ -3277,7 +3502,7 @@ async function boot() {
      Seule exception, l'appareil neuf : sans pool, démarrer tout de suite
      gaspillerait une recherche à 100 unités pour redécouvrir des chaînes déjà
      présentes dans la feuille. On patiente alors, mais pas indéfiniment. */
-  const localReady = Object.keys(State.pool).length >= MIN_POOL_TO_START;
+  const localReady = Object.keys(State.pool).length >= MIN_POOL_TO_START || Curated.left() > 0;
   if (Cloud.configured() && !localReady) {
     await Promise.race([Cloud.pull(), sleep(5000)]);
   } else if (Cloud.configured()) {
