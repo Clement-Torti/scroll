@@ -1715,6 +1715,7 @@ class Feed {
     this.players = new Map();     // videoId → YT.Player
     this.slides = new Map();      // videoId → element
     this.primed = new Set();      // videoId dont le tampon est amorcé
+    this.pbTimer = 0;             // amorçage différé du suivant
     this.active = -1;
     this.loading = false;
     this.exhausted = false;
@@ -1736,6 +1737,7 @@ class Feed {
   }
   suspend() {
     cancelAnimationFrame(this.raf); this.raf = 0;
+    clearTimeout(this.pbTimer);
     for (const p of this.players.values()) { try { p.pauseVideo(); } catch {} }
     this.root.hidden = true;
   }
@@ -1875,19 +1877,17 @@ class Feed {
 
   /* ---------- gestion des lecteurs ---------- */
   /**
-   * Fenêtre de lecteurs vivants : précédent, actif, et deux suivants.
-   * Le lecteur +1 est en plus *amorcé* (cf. prebuffer) : créer l'iframe ne
-   * suffisait pas, `playVideo()` au moment du swipe déclenchait alors une
-   * mise en tampon à froid — c'est là que se jouait l'attente.
+   * Fenêtre de lecteurs vivants : précédent, actif, suivant. Trois, pas
+   * quatre : élargir à +2 faisait créer DEUX iframes à chaque swipe, juste au
+   * moment où la vidéo attendue réclamait la bande passante.
    */
   ensurePlayers() {
     const keep = new Set();
-    for (let i = this.active - 1; i <= this.active + 2; i++) {
+    for (let i = this.active - 1; i <= this.active + 1; i++) {
       const v = this.items[i];
       if (!v) continue;
       keep.add(v.id);
       if (!this.players.has(v.id)) this.createPlayer(v, i === this.active);
-      else if (i === this.active + 1) this.prebuffer(v);
     }
     for (const [id, p] of [...this.players]) {
       if (keep.has(id)) continue;
@@ -1900,12 +1900,16 @@ class Feed {
   }
 
   /**
-   * Amorce le tampon d'un lecteur hors écran : on le lance en sourdine, et
-   * `onPlayerState` le remet en pause dès la première image obtenue. Le
-   * swipe suivant redémarre alors depuis le tampon, sans attente.
+   * Amorce le tampon du lecteur suivant : on le lance en sourdine, et
+   * `onPlayerState` le met en pause dès la première image obtenue.
+   *
+   * Appelé seulement une fois la vidéo en cours réellement lancée, et après
+   * un court délai : démarrer l'amorçage dès le swipe revenait à disputer la
+   * bande passante à la vidéo que l'utilisateur attend.
    */
-  prebuffer(v) {
-    if (this.primed.has(v.id)) return;
+  prebufferNext() {
+    const v = this.items[this.active + 1];
+    if (!v || this.primed.has(v.id)) return;
     const p = this.players.get(v.id);
     if (!p?.playVideo) return;
     try { p.mute(); p.playVideo(); } catch {}
@@ -1931,7 +1935,6 @@ class Feed {
           onReady: () => {
             try { p.mute(); } catch {}
             if (this.items[this.active]?.id === v.id) this.playActive();
-            else if (this.items[this.active + 1]?.id === v.id) this.prebuffer(v);
           },
           onStateChange: e => this.onPlayerState(v, e),
           onError: () => this.onPlayerError(v),
@@ -1949,12 +1952,26 @@ class Feed {
     if (st === YT.PlayerState.BUFFERING) spin?.classList.add('on');
     else spin?.classList.remove('on');
     if (st === YT.PlayerState.PLAYING) {
-      if (this.items[this.active]?.id === v.id) { poster && (poster.style.opacity = '0'); }
-      else {
-        /* Lecteur hors écran : on avait démarré uniquement pour remplir le
-           tampon. Première image obtenue, on le fige sur son début. */
+      if (this.items[this.active]?.id === v.id) {
+        poster && (poster.style.opacity = '0');
+        /* La vidéo en cours tourne : la suivante peut être amorcée sans
+           lui voler de débit. */
+        /* 250 ms, pas 1200 : sur des vidéos de 30 s on swipe vite, et un
+           amorçage lancé trop tard n'aboutissait jamais — il consommait du
+           débit sans jamais servir. Assez court pour aboutir, assez tard pour
+           ne pas disputer le démarrage de la vidéo en cours. */
+        clearTimeout(this.pbTimer);
+        this.pbTimer = setTimeout(() => this.prebufferNext(), 250);
+      } else {
+        /* Lecteur hors écran, lancé uniquement pour remplir son tampon :
+           première image obtenue, on le met en pause.
+           Surtout PAS de seekTo(0, true) ici — `allowSeekAhead` autorise une
+           nouvelle requête au serveur et jetait le tampon tout juste
+           constitué. L'amorçage coûtait alors du débit pour rien, et c'est
+           ce qui rendait la deuxième vidéo plus lente, pas plus rapide.
+           Reprendre à ~0,5 s au lieu de 0 est imperceptible. */
         this.primed.add(v.id);
-        try { e.target.pauseVideo(); e.target.seekTo(0, true); } catch {}
+        try { e.target.pauseVideo(); } catch {}
       }
     }
     if (st === YT.PlayerState.ENDED && this.items[this.active]?.id === v.id) {
@@ -1980,10 +1997,19 @@ class Feed {
     this.primed.delete(v.id);
     const p = this.players.get(v.id);
     if (!p?.playVideo) return;
-    try {
-      if (State.settings.sound) { p.unMute(); p.setVolume(100); } else p.mute();
-      p.playVideo();
-    } catch {}
+
+    const sound = () => { try { if (State.settings.sound) { p.unMute(); p.setVolume(100); } else p.mute(); } catch {} };
+
+    /* Idempotent. refill(), UI.tab() → resume() et onReady() réclamaient tous
+       trois la lecture de la même slide : playVideo() partait donc trois fois,
+       et chaque appel pendant la mise en tampon la fait repartir de zéro —
+       la première vidéo mettait presque une seconde de plus à démarrer. */
+    let st = null;
+    try { st = p.getPlayerState(); } catch {}
+    if (st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING) { sound(); return; }
+
+    sound();
+    try { p.playVideo(); } catch {}
   }
 
   /* Pas de retour visuel maison : `controls=0` masque la barre mais le
@@ -2126,6 +2152,7 @@ class Feed {
 
   reset() {
     cancelAnimationFrame(this.raf); this.raf = 0;
+    clearTimeout(this.pbTimer);
     for (const p of this.players.values()) { try { p.destroy(); } catch {} }
     this.players.clear();
     this.primed.clear();
