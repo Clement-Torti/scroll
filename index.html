@@ -378,6 +378,9 @@ a{color:var(--accent-2)}
       <button class="tab" role="tab" data-tab="foryou" aria-selected="true">Pour toi</button>
       <button class="tab" role="tab" data-tab="subs" aria-selected="false">Abonnements<span class="cnt" id="subsCnt" hidden>0</span></button>
     </div>
+    <button class="iconbtn" id="btnTopics" aria-label="Centres d'intérêt">
+      <svg viewBox="0 0 24 24"><path d="M4 7.5h8M17.5 7.5H20M4 16.5h3.5M13 16.5H20"/><circle cx="14.7" cy="7.5" r="2.3"/><circle cx="10.2" cy="16.5" r="2.3"/></svg>
+    </button>
     <button class="iconbtn" id="btnSettings" aria-label="Réglages">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.11A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.11A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.7a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.11A1.7 1.7 0 0 0 15 4.7a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.3 9v.03a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.11A1.7 1.7 0 0 0 19.4 15z"/></svg>
     </button>
@@ -2422,6 +2425,11 @@ const UI = {
     const det = { ready: 'actif (on-device)', absent: 'non supporté par ce navigateur', unknown: '…' }[Lang.detectorState] || 'indisponible';
 
     $('#settingsBody').innerHTML = `
+      <div class="sechead">Centres d'intérêt</div>
+      <div class="row"><div class="rx"><div class="rt">Thèmes et mots-clés</div>
+        <div class="rd">${Discovery.onSeeds().length} mot(s)-clé · ${Discovery.onCats().length} catégorie(s) · ${Discovery.onTopics().length} thème(s)${State.topics.only ? ' · exclusif' : ''}</div></div>
+        <button class="mini" id="openTopics">Configurer</button></div>
+
       <div class="sechead">Filtre de langue</div>
       <div class="row"><div class="rx"><div class="rt">Sévérité</div>
         <div class="rd">${s.strictness === 'strict'
@@ -2471,17 +2479,6 @@ const UI = {
         <div class="kv"><span>Écartées — indispo/embargo</span><b>${st.rejectedOther}</b></div>
       </div>
 
-      <div class="sechead">Intérêts appris</div>
-      <div class="row" style="display:block">
-        <div class="chips">${(Discovery.topTerms(14).map(t => `<span class="chip">${esc(t)}</span>`).join('') || '<span class="rd">Aime des vidéos pour personnaliser la découverte.</span>')}</div>
-        <div class="chips" style="margin-top:8px">${Discovery.topCats(4).map(c => `<span class="chip">${esc(CAT_NAMES[c] || c)}</span>`).join('')}</div>
-      </div>
-
-      <div class="sechead">Centres d'intérêt</div>
-      <div class="row"><div class="rx"><div class="rt">Thèmes et mots-clés</div>
-        <div class="rd">${Discovery.onSeeds().length} mot(s)-clé · ${Discovery.onCats().length} catégorie(s) · ${Discovery.onTopics().length} thème(s)${State.topics.only ? ' · exclusif' : ''}</div></div>
-        <button class="mini" id="openTopics">Configurer</button></div>
-
       <div class="sechead">Synchronisation Google Sheet</div>
       <div class="row" id="cloudRow"><div class="rx"><div class="rt" style="display:flex;align-items:center;gap:7px">
         <span class="dot ${Cloud.status}"></span>${
@@ -2520,6 +2517,7 @@ const UI = {
    ══════════════════════════════════════════════════════════════════════ */
 $$('.tab').forEach(b => b.addEventListener('click', () => UI.tab(b.dataset.tab)));
 $('#btnSettings').addEventListener('click', () => UI.openPanel('panelSettings'));
+$('#btnTopics').addEventListener('click', () => UI.openPanel('panelTopics'));
 $('#btnSubsPanel').addEventListener('click', () => UI.openPanel('panelSubs'));
 $$('[data-close]').forEach(b => b.addEventListener('click', () => UI.closePanel(b.dataset.close)));
 $('#nudge').addEventListener('click', () => UI.setSound(true));
