@@ -2004,13 +2004,15 @@ const Subs = (() => {
    `application/json` déclencherait un préflight et tout casserait.
    ══════════════════════════════════════════════════════════════════════ */
 const Cloud = (() => {
-  const DEBOUNCE = 6000;
+  const DEBOUNCE    = 6000;          // regroupe les rafales de modifications
+  const MAX_WAIT    = 45000;         // ...mais une modification n'attend jamais plus
+  const RETRY       = 30000;         // nouvelle tentative après un échec réseau
   const SEEN_SYNCED = 1500;          // on ne synchronise pas 4 000 identifiants
 
   let status = 'off';                // off | ok | syncing | error
   let detail = '';
   let lastSync = Store.get('cloudSync', 0);
-  let timer = 0, busy = false, pulled = false;
+  let timer = 0, busy = false, pulled = false, firstPendingAt = 0;
   const pending = new Set();
   const removals = { subscriptions: new Set(), channels: new Set(), liked: new Set() };
 
@@ -2078,11 +2080,17 @@ const Cloud = (() => {
   }
 
   /* ---------- Poussée ---------- */
+  const schedule = delay => { clearTimeout(timer); timer = setTimeout(() => push(), delay); };
+
   function mark(section) {
     if (!configured() || !pulled) return;      // ne rien pousser avant d'avoir fusionné
     pending.add(section);
-    clearTimeout(timer);
-    timer = setTimeout(() => push(), DEBOUNCE);
+    if (!firstPendingAt) firstPendingAt = Date.now();
+    /* Débounce *borné*. Un débounce simple était famélique : chaque slide
+       appelle markSeen() puis reinforce(), donc en défilement continu le
+       minuteur se réarmait toutes les 2 s et la poussée n'arrivait jamais.
+       MAX_WAIT garantit une latence maximale quoi qu'il arrive. */
+    schedule(Math.max(0, Math.min(DEBOUNCE, MAX_WAIT - (Date.now() - firstPendingAt))));
   }
   /** Signale une suppression (désabonnement, chaîne écartée). */
   function drop(table, id) {
@@ -2104,13 +2112,30 @@ const Cloud = (() => {
       const r = await rpc('save', { patch: body });
       Object.values(removals).forEach(s => s.clear());
       lastSync = Date.now(); Store.set('cloudSync', lastSync);
+      firstPendingAt = pending.size ? Date.now() : 0;   // marks arrivés pendant l'envoi
       setStatus('ok', `${r.wrote?.rows || 0} ligne(s), ${r.wrote?.kv || 0} clé(s)`);
+      if (pending.size) schedule(DEBOUNCE);
       return true;
     } catch (e) {
-      sections.forEach(x => pending.add(x));     // on retentera
+      sections.forEach(x => pending.add(x));
       setStatus('error', e.message);
+      schedule(RETRY);                           // sinon rien ne repart avant la prochaine modif
       return false;
     } finally { busy = false; }
+  }
+
+  /**
+   * Dernière chance au départ de la page. `fetch` peut être tué net par le
+   * gel de l'onglet sur iOS ; `sendBeacon` est conçu pour survivre. On ne
+   * peut pas lire sa réponse, donc `pending` n'est pas vidé — les écritures
+   * étant des upserts idempotents, un doublon est sans conséquence.
+   */
+  function flushOnHide() {
+    if (!configured() || !pending.size || !navigator.sendBeacon) return false;
+    try {
+      const body = JSON.stringify({ action: 'save', patch: patch(new Set(pending)) });
+      return navigator.sendBeacon(State.cloud.url, new Blob([body], { type: 'text/plain;charset=utf-8' }));
+    } catch { return false; }
   }
 
   /* ---------- Tirage + fusion ---------- */
@@ -2121,6 +2146,7 @@ const Cloud = (() => {
       const { profile } = await rpc('load');
       merge(profile || {});
       pulled = true;
+      if (pending.size) schedule(DEBOUNCE);     // modifications faites pendant le chargement
       lastSync = Date.now(); Store.set('cloudSync', lastSync);
       setStatus('ok', 'profil chargé');
       return profile;
@@ -2210,7 +2236,7 @@ const Cloud = (() => {
     try { UI.refreshCloudRow?.(); } catch {}
   }
 
-  return { pull, push, mark, drop, rpc, configured,
+  return { pull, push, mark, drop, rpc, configured, flushOnHide,
            get status() { return status; }, get detail() { return detail; },
            get lastSync() { return lastSync; }, get queued() { return pending.size; } };
 })();
@@ -2493,10 +2519,7 @@ const UI = {
       <div class="row" style="display:block">
         <div class="field" style="gap:7px">
           <input id="cloudUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(State.cloud.url)}" spellcheck="false">
-          <div class="addrow" style="margin:0">
-            <button class="btn ghost" id="cloudTest" style="flex:1">Tester</button>
-            <button class="btn primary" id="cloudSave" style="flex:1">Enregistrer</button>
-          </div>
+          <button class="btn primary block" id="cloudSave">Connecter</button>
         </div>
         <div class="rd" style="margin-top:9px">L'URL <code>/exec</code> est le secret : elle contient un identifiant long et non devinable. À traiter comme un mot de passe — ne pas la publier. Rien de destructeur n'est exposé côté script. La clé API YouTube n'est jamais envoyée à la feuille.</div>
       </div>
@@ -2610,24 +2633,25 @@ $('#settingsBody').addEventListener('click', e => {
   if (t.closest('#swLoop'))  { State.settings.loopSingle = !State.settings.loopSingle; save.settings(); UI.renderSettings(); return; }
   if (t.id === 'openTopics') { UI.closePanel('panelSettings'); UI.openPanel('panelTopics'); return; }
 
-  if (t.id === 'cloudSave' || t.id === 'cloudTest') {
+  if (t.id === 'cloudSave') {
     const url = $('#cloudUrl').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url)) {
       UI.toast('URL attendue : https://script.google.com/macros/s/.../exec', true); return;
     }
     State.cloud = { url }; save.cloud();
-    const testing = t.id === 'cloudTest';
-    t.disabled = true; t.textContent = testing ? 'Test…' : 'Envoi…';
+    t.disabled = true; t.textContent = 'Connexion…';
+    /* Un seul bouton : vérifier, fusionner, envoyer. Auparavant « Tester » se
+       contentait d'un ping et laissait la synchronisation désarmée pour toute
+       la session (Cloud.mark() sort tant que le profil distant n'a pas été
+       fusionné) — on croyait la connexion faite, rien ne partait. */
     (async () => {
       try {
-        if (testing) {
-          await Cloud.rpc('ping');
-          UI.toast('✓ Script joignable');
-        } else {
-          await Cloud.pull();
-          const ok = await Cloud.push(true);
-          UI.toast(ok ? '✓ Profil enregistré dans la feuille' : 'Échec : ' + Cloud.detail, !ok);
-        }
+        const r = await Cloud.rpc('ping');
+        await Cloud.pull();
+        const ok = await Cloud.push(true);
+        const c = r.counts || {};
+        UI.toast(ok ? `✓ Connecté — ${c.channels || 0} chaîne(s), ${c.subscriptions || 0} abonnement(s) dans la feuille`
+                    : 'Feuille joignable mais envoi refusé : ' + Cloud.detail, !ok);
       } catch (err) { UI.toast(err.message || 'Échec', true); }
       UI.renderSettings();
     })();
@@ -2661,9 +2685,12 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { $$('.panel.on').forEach(p => UI.closePanel(p.id)); }
 });
 
-/* Départ de la page : on tente une dernière poussée. `visibilitychange` est
-   le seul événement fiable sur iOS — `beforeunload` n'y est pas garanti. */
-document.addEventListener('visibilitychange', () => { if (document.hidden) Cloud.push(); });
+/* Départ de la page. `visibilitychange` est le seul événement fiable sur iOS —
+   `beforeunload` n'y est pas garanti. Au retour, on rattrape ce qui traîne. */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (!Cloud.flushOnHide()) Cloud.push(); }
+  else if (Cloud.queued) Cloud.push();
+});
 
 /* onglet en arrière-plan : on met en pause pour ne pas consommer de bande passante */
 document.addEventListener('visibilitychange', () => {

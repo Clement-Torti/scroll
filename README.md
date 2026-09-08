@@ -184,7 +184,13 @@ que sobrevive al borrado del navegador y sigue a todos tus dispositivos.
 5. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
    acceso *cualquier persona*. Copia la URL `.../exec`.
 6. Pega esa URL en la app — ya en la pantalla de inicio, o después en Ajustes →
-   Sincronización.
+   Sincronización → **Connecter**.
+
+> **Al modificar `Code.gs` hay que volver a desplegar.** La URL `/exec` apunta a
+> una **versión congelada** del script: guardar en el editor no cambia nada de
+> lo que sirve esa URL. Hay que hacer *Implementar → Gestionar implementaciones
+> → ✏️ → Versión: **Nueva versión** → Implementar*. La URL no cambia. Es el
+> error más fácil de cometer y el más difícil de diagnosticar.
 
 ### Sin autenticación: la URL *es* la contraseña
 
@@ -207,6 +213,19 @@ Las fusiones son **uniones conmutativas** — el orden entre dispositivos no
 importa — con dos excepciones deliberadas: un veredicto «no es francés» es
 definitivo y gana siempre, y los ajustes vienen del remoto, que es la
 referencia.
+
+El envío es **automático**, nunca hace falta pulsar nada. Tres detalles que lo
+hacen fiable:
+
+- **Debounce acotado** (6 s, máximo 45 s). Un debounce simple se moría de
+  hambre: cada slide llama a `markSeen()` y `reinforce()`, así que al hacer
+  scroll continuo el temporizador se rearmaba cada 2 s y el envío no llegaba
+  nunca. `MAX_WAIT` garantiza una latencia máxima.
+- **Reintento a los 30 s** si falla la red. Antes un fallo esperaba a la
+  siguiente modificación.
+- **`navigator.sendBeacon` al salir de la página**, porque iOS puede matar un
+  `fetch` al congelar la pestaña. Las escrituras son upserts idempotentes, así
+  que un duplicado eventual no hace daño.
 
 ### La trampa del CORS
 

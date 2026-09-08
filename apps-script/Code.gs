@@ -63,7 +63,17 @@ function doPost(e) {
 function handle(req) {
   try {
     var action = req.action || 'ping';
-    if (action === 'ping') return json({ ok: true, version: VERSION });
+    if (action === 'ping') {
+      /* `ping` doit prouver quelque chose. Une réponse vide validait le
+         déploiement mais pas SHEET_ID ni les autorisations : le test passait
+         alors que rien ne pouvait être écrit. On touche donc réellement la
+         feuille — ce qui crée aussi les onglets au premier appel. */
+      var p = load();
+      return json({ ok: true, version: VERSION, url: book().getUrl(), counts: {
+        kv: Object.keys(p.kv).length, channels: p.channels.length,
+        subscriptions: p.subscriptions.length, topics: p.topics.length, liked: p.liked.length,
+      } });
+    }
     if (action === 'load') return json({ ok: true, version: VERSION, profile: load() });
     if (action === 'save') return json(save(req.patch || {}));
     /* Pas de `reset` ici : c'est la seule opération destructrice, et sans
