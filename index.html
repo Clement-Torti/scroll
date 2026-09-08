@@ -123,7 +123,7 @@ a{color:var(--accent-2)}
 }
 .tab[aria-selected="true"]{color:#fff}
 .tab[aria-selected="true"]::after{
-  content:"";position:absolute;left:50%;translate:-50% 0;bottom:1px;
+  content:"";position:absolute;left:0;right:0;margin-inline:auto;bottom:1px;
   width:20px;height:2.5px;border-radius:2px;background:#fff;
 }
 .tab .cnt{
@@ -239,7 +239,8 @@ a{color:var(--accent-2)}
 
 /* sound nudge */
 #nudge{
-  position:absolute;z-index:25;left:50%;translate:-50% 0;top:calc(58px + var(--safe-t));
+  position:absolute;z-index:25;left:0;right:0;margin-inline:auto;width:fit-content;
+  top:calc(58px + var(--safe-t));
   display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;
   background:rgba(255,255,255,.95);color:#000;font-weight:800;font-size:13px;
   box-shadow:0 8px 30px rgba(0,0,0,.5);animation:drop .4s var(--ease)
@@ -316,14 +317,20 @@ a{color:var(--accent-2)}
 @keyframes blink{50%{opacity:.25}}
 
 /* toast */
+/* Centrage par marges auto, jamais par translate(-50%).
+   `translate` et `transform` sont deux propriétés distinctes qui se
+   CUMULENT : les combiner décalait l'élément de deux fois -50 %, soit
+   une demi-largeur trop à gauche (mesuré : -88,5 px pour 176,9 de large).
+   Ici les marges centrent, et `transform` reste libre pour l'animation. */
 #toast{
-  position:absolute;z-index:70;left:50%;translate:-50% 0;bottom:calc(84px + var(--safe-b));
+  position:absolute;z-index:70;left:0;right:0;margin-inline:auto;width:fit-content;
+  bottom:calc(84px + var(--safe-b));
   padding:11px 17px;border-radius:var(--r-md);max-width:82%;text-align:center;
   background:rgba(255,255,255,.96);color:#000;font-weight:700;font-size:13px;
   box-shadow:0 10px 34px rgba(0,0,0,.55);
-  opacity:0;transform:translate(-50%,14px);transition:opacity .22s,transform .22s var(--ease);pointer-events:none
+  opacity:0;transform:translateY(14px);transition:opacity .22s,transform .22s var(--ease);pointer-events:none
 }
-#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.on{opacity:1;transform:none}
 #toast.bad{background:#ff4d68;color:#fff}
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
