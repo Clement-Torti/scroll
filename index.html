@@ -1260,6 +1260,8 @@ const Discovery = (() => {
   const WINDOWS   = [7, 30, 90, 365, 0];      // jours ; 0 = pas de borne
 
   let searchesSinceReset = 0;
+  /** Impose une recherche au prochain tour (cf. invalidateQueue). */
+  let forceSearch = false;
 
   /* ---------- Modèle d'intérêts ---------- */
   function reinforce(video, weight) {
@@ -1523,6 +1525,8 @@ const Discovery = (() => {
     const favCount = Object.keys(State.favorites).length;
     const left = Quota.left;
 
+    if (forceSearch && left >= COST.search + 60) { forceSearch = false; return 'search'; }
+
     /* Amorçage : sans pool, seule la recherche peut faire démarrer le feed. */
     if (poolSize < 5) return left >= COST.search + 60 ? 'search' : 'chart';
 
@@ -1626,6 +1630,23 @@ const Discovery = (() => {
   /** Appelé quand l'utilisateur change la sévérité du filtre. */
   const requeueSoftRejects = () => softReject.clear();
 
+  /**
+   * Jette la file d'attente : elle a été constituée sous les critères
+   * précédents (thèmes, durée, sévérité) et ne les respecte plus.
+   */
+  function invalidateQueue() {
+    const n = buffer.length;
+    buffer.length = 0;
+    softReject.clear();
+    dryUntil = 0;
+    /* Vider le tampon ne suffit pas : la recharge suivante puiserait dans le
+       pool, garni de chaînes découvertes sous les *anciens* critères, et la
+       nouvelle sélection resterait sans effet pendant des dizaines de vidéos.
+       On impose donc une recherche, seule source qui honore topicId. */
+    forceSearch = true;
+    return n;
+  }
+
   /** Une chaîne écartée ne doit plus rien fournir, même déjà servi. */
   const forgetChannel = cid => {
     for (const id of [...served]) if (State.vcache[id]?.channelId === cid) served.delete(id);
@@ -1633,7 +1654,7 @@ const Discovery = (() => {
   };
 
   return { collect, reinforce, interleave, hydrate, addToPool, topTerms, topCats,
-           requeueSoftRejects, forgetChannel, resetBackoff, onCats, onTopics, onSeeds,
+           requeueSoftRejects, forgetChannel, resetBackoff, invalidateQueue, onCats, onTopics, onSeeds,
            get buffered() { return buffer.length; },
            get bufferedChannels() { return distinctChannels(buffer); },
            get searches() { return searchesSinceReset; },
@@ -1693,6 +1714,7 @@ class Feed {
     this.items = [];
     this.players = new Map();     // videoId → YT.Player
     this.slides = new Map();      // videoId → element
+    this.primed = new Set();      // videoId dont le tampon est amorcé
     this.active = -1;
     this.loading = false;
     this.exhausted = false;
@@ -1852,21 +1874,41 @@ class Feed {
   }
 
   /* ---------- gestion des lecteurs ---------- */
+  /**
+   * Fenêtre de lecteurs vivants : précédent, actif, et deux suivants.
+   * Le lecteur +1 est en plus *amorcé* (cf. prebuffer) : créer l'iframe ne
+   * suffisait pas, `playVideo()` au moment du swipe déclenchait alors une
+   * mise en tampon à froid — c'est là que se jouait l'attente.
+   */
   ensurePlayers() {
     const keep = new Set();
-    for (let i = this.active - 1; i <= this.active + 1; i++) {
+    for (let i = this.active - 1; i <= this.active + 2; i++) {
       const v = this.items[i];
       if (!v) continue;
       keep.add(v.id);
       if (!this.players.has(v.id)) this.createPlayer(v, i === this.active);
+      else if (i === this.active + 1) this.prebuffer(v);
     }
     for (const [id, p] of [...this.players]) {
       if (keep.has(id)) continue;
       try { p.destroy(); } catch {}
       this.players.delete(id);
+      this.primed.delete(id);
       const s = this.slides.get(id);
       if (s) { const w = $('.pwrap', s); if (w) w.innerHTML = '<div class="mount"></div>'; }
     }
+  }
+
+  /**
+   * Amorce le tampon d'un lecteur hors écran : on le lance en sourdine, et
+   * `onPlayerState` le remet en pause dès la première image obtenue. Le
+   * swipe suivant redémarre alors depuis le tampon, sans attente.
+   */
+  prebuffer(v) {
+    if (this.primed.has(v.id)) return;
+    const p = this.players.get(v.id);
+    if (!p?.playVideo) return;
+    try { p.mute(); p.playVideo(); } catch {}
   }
 
   createPlayer(v, isActive) {
@@ -1889,6 +1931,7 @@ class Feed {
           onReady: () => {
             try { p.mute(); } catch {}
             if (this.items[this.active]?.id === v.id) this.playActive();
+            else if (this.items[this.active + 1]?.id === v.id) this.prebuffer(v);
           },
           onStateChange: e => this.onPlayerState(v, e),
           onError: () => this.onPlayerError(v),
@@ -1905,7 +1948,15 @@ class Feed {
     const st = e.data;
     if (st === YT.PlayerState.BUFFERING) spin?.classList.add('on');
     else spin?.classList.remove('on');
-    if (st === YT.PlayerState.PLAYING) { poster && (poster.style.opacity = '0'); }
+    if (st === YT.PlayerState.PLAYING) {
+      if (this.items[this.active]?.id === v.id) { poster && (poster.style.opacity = '0'); }
+      else {
+        /* Lecteur hors écran : on avait démarré uniquement pour remplir le
+           tampon. Première image obtenue, on le fige sur son début. */
+        this.primed.add(v.id);
+        try { e.target.pauseVideo(); e.target.seekTo(0, true); } catch {}
+      }
+    }
     if (st === YT.PlayerState.ENDED && this.items[this.active]?.id === v.id) {
       if (State.settings.loopSingle) { try { e.target.seekTo(0, true); e.target.playVideo(); } catch {} }
       else if (State.settings.autoAdvance) this.next();
@@ -1926,6 +1977,7 @@ class Feed {
   playActive() {
     const v = this.items[this.active];
     if (!v) return;
+    this.primed.delete(v.id);
     const p = this.players.get(v.id);
     if (!p?.playVideo) return;
     try {
@@ -2015,6 +2067,28 @@ class Feed {
     if (on) Subs.invalidate();
   }
 
+  /**
+   * Jette tout ce qui suit la vidéo en cours et recharge. Utilisé quand les
+   * critères de découverte changent : les slides déjà en file ont été
+   * choisies sous les anciens et ne correspondent plus à la demande.
+   */
+  async applyNewCriteria() {
+    const dropped = this.items.length - this.active - 1;
+    for (let i = this.items.length - 1; i > this.active; i--) {
+      const id = this.items[i].id;
+      const s = this.slides.get(id);
+      if (s) { this.io.unobserve(s); s.remove(); }
+      const p = this.players.get(id);
+      if (p) { try { p.destroy(); } catch {} this.players.delete(id); }
+      this.slides.delete(id); this.primed.delete(id);
+      this.items.splice(i, 1);
+    }
+    this.exhausted = false;
+    await this.refill(this.items.length === 0);
+    this.ensurePlayers();
+    return dropped;
+  }
+
   /** Signalement utilisateur : la chaîne entière est écartée. */
   notFrench(v) {
     Lang.blacklist(v.channelId);
@@ -2054,6 +2128,7 @@ class Feed {
     cancelAnimationFrame(this.raf); this.raf = 0;
     for (const p of this.players.values()) { try { p.destroy(); } catch {} }
     this.players.clear();
+    this.primed.clear();
     for (const s of this.slides.values()) this.io.unobserve(s);
     this.slides.clear();
     this.items = [];
@@ -2498,8 +2573,20 @@ const UI = {
   },
 
   /* ---------- panneaux ---------- */
+  /** Empreinte de tout ce qui conditionne la découverte. */
+  criteriaSignature() {
+    const t = State.topics;
+    return JSON.stringify([
+      Object.keys(t.cats).filter(k => t.cats[k]).sort(),
+      Object.keys(t.topics).filter(k => t.topics[k]).sort(),
+      [...(t.seeds || [])].sort(),
+      t.only, State.settings.strictness, State.settings.maxSeconds,
+    ]);
+  },
+
   openPanel(id) {
     const p = $('#' + id);
+    this._criteria = this.criteriaSignature();   // pour détecter un changement à la fermeture
     p.hidden = false;
     requestAnimationFrame(() => p.classList.add('on'));
     if (id === 'panelSettings') this.renderSettings();
@@ -2510,6 +2597,18 @@ const UI = {
     const p = $('#' + id);
     p.classList.remove('on');
     setTimeout(() => { p.hidden = true; }, 340);
+
+    /* Un changement de thème ou de mot-clé doit se voir tout de suite : sans
+       ça la file déjà constituée continuait de servir l'ancienne sélection
+       pendant une dizaine de vidéos. */
+    if (this._criteria && this._criteria !== this.criteriaSignature()) {
+      this._criteria = null;
+      const feed = feeds[current];
+      if (!feed) return;
+      Discovery.invalidateQueue();
+      this.toast('Feed actualisé selon tes choix');
+      feed.applyNewCriteria().catch(e => this.apiError(e, () => feed.applyNewCriteria()));
+    }
   },
 
   /* ---------- son ---------- */

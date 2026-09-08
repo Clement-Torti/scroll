@@ -306,6 +306,14 @@ Gestos: swipe vertical, un toque para pausar, doble toque para «me gusta».
 
 - El navegador solo permite autoplay **silenciado**; hay que tocar una vez
   «Appuie pour le son» (igual que TikTok o Instagram en web).
+- El short siguiente se **precarga**: se lanza silenciado fuera de pantalla y
+  se congela en su primer fotograma, para que el swipe arranque desde el búfer
+  en vez de en frío. Cuesta algo de datos — un vídeo de adelanto — y mantiene
+  cuatro iframes vivos (anterior, actual, dos siguientes) en vez de tres.
+- Cambiar de tema o añadir palabras clave **descarta la cola** y fuerza una
+  búsqueda nueva al cerrar el panel: sin eso el pool, poblado con los temas
+  anteriores, seguía sirviendo lo viejo durante decenas de vídeos. Cuesta 100
+  unidades por cambio.
 - Los vídeos con el embed desactivado por su autor no se pueden reproducir; se
   detectan por `status.embeddable` y por el error del reproductor, y se saltan.
 - `LanguageDetector` solo existe hoy en Chrome/Edge; sin él el filtro cae a la
