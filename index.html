@@ -106,6 +106,36 @@ a{color:var(--accent-2)}
 .note{font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.55}
 .err{color:#ff7b8f;font-size:13px;min-height:18px;margin-top:8px}
 
+/* ============================ TOP TABS ============================ */
+#topbar{
+  position:absolute;z-index:30;top:0;left:0;right:0;
+  padding:calc(11px + var(--safe-t)) 12px 0;
+  display:flex;justify-content:center;pointer-events:none;
+}
+#topbar>*{pointer-events:auto}
+.tabs{display:flex;gap:4px;position:relative}
+.tab{
+  padding:7px 13px;border-radius:999px;font-weight:700;font-size:15.5px;
+  color:rgba(255,255,255,.62);position:relative;transition:color .18s;
+  text-shadow:0 1px 8px rgba(0,0,0,.7);letter-spacing:-.01em;
+}
+.tab[aria-selected="true"]{color:#fff;font-weight:800}
+.tab[aria-selected="true"]::after{
+  content:"";position:absolute;left:0;right:0;margin-inline:auto;bottom:1px;
+  width:22px;height:3px;border-radius:2px;background:#fff;
+}
+
+/* Bouton rond des en-têtes de panneau. Ces règles vivaient dans le bloc de
+   l'ancienne barre du haut et ont disparu avec elle : les quatre croix de
+   fermeture étaient devenues invisibles. */
+.iconbtn{
+  width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:var(--surface-2);border:1px solid var(--line);flex:none;
+  transition:transform .12s var(--ease),background .15s;
+}
+.iconbtn:active{transform:scale(.9);background:var(--surface-3)}
+.iconbtn svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
 /* ============================ BOTTOM NAV ============================ */
 :root{ --nav-h:calc(54px + var(--safe-b)); }
 #bottomnav{
@@ -127,11 +157,28 @@ a{color:var(--accent-2)}
 .nav:active{transform:scale(.9)}
 .nav svg{width:25px;height:25px;fill:currentColor}
 .nav span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.nav .cnt{
-  position:absolute;top:-1px;left:calc(50% + 7px);
-  min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;
+/* Le bouton central de TikTok : un rectangle blanc arrondi dont dépassent
+   une lisière cyan à gauche et une rouge à droite. */
+.navadd{justify-content:center;padding:0}
+.plusbtn{position:relative;width:47px;height:30px;display:block}
+.plusbtn i{position:absolute;top:0;height:30px;width:40px;border-radius:9px;display:block}
+.plusbtn .l{left:0;background:#25f4ee}
+.plusbtn .r{right:0;background:#fe2c55}
+.plusbtn .c{left:3.5px;right:3.5px;width:auto;background:#fff}
+.plusbtn .c::before,.plusbtn .c::after{
+  content:"";position:absolute;top:50%;left:50%;background:#000;border-radius:1px;
+}
+.plusbtn .c::before{width:15px;height:2.4px;margin:-1.2px 0 0 -7.5px}
+.plusbtn .c::after{width:2.4px;height:15px;margin:-7.5px 0 0 -1.2px}
+.navadd:active .plusbtn{transform:scale(.92)}
+
+/* Le compteur de nouveautés appartient à l'onglet « Abonnements » : posé sur
+   l'entrée « Messages », qui ne mène à rien, il désignait la mauvaise chose. */
+.tab .cnt{
+  display:inline-block;vertical-align:2px;margin-left:5px;
+  min-width:17px;height:17px;padding:0 4px;box-sizing:border-box;
   background:var(--accent);color:#fff;border-radius:999px;
-  font-size:10px;font-weight:800;line-height:16px;text-align:center;font-style:normal;
+  font-size:10.5px;font-weight:800;line-height:17px;text-align:center;font-style:normal;
 }
 
 /* ============================ FEED ============================ */
@@ -167,7 +214,7 @@ a{color:var(--accent-2)}
    ligne nette en plein milieu de l'image. */
 .scrim{position:absolute;left:0;right:0;z-index:6;pointer-events:none}
 .scrim.top{
-  top:0;height:calc(78px + var(--safe-t));
+  top:0;height:calc(96px + var(--safe-t));
   background:linear-gradient(#000000d4,#0000008c 52%,#0000);
   -webkit-mask-image:linear-gradient(#000 58%,#0000);mask-image:linear-gradient(#000 58%,#0000);
 }
@@ -282,7 +329,7 @@ a{color:var(--accent-2)}
 /* sound nudge */
 #nudge{
   position:absolute;z-index:25;left:0;right:0;margin-inline:auto;width:fit-content;
-  top:calc(18px + var(--safe-t));
+  top:calc(62px + var(--safe-t));
   display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;
   background:rgba(255,255,255,.95);color:#000;font-weight:800;font-size:13px;
   box-shadow:0 8px 30px rgba(0,0,0,.5);animation:drop .4s var(--ease)
@@ -337,6 +384,30 @@ a{color:var(--accent-2)}
 .sechead:first-child{margin-top:4px}
 .empty{text-align:center;padding:52px 20px;color:var(--text-3)}
 .empty .big{font-size:34px;margin-bottom:10px}
+
+/* profil */
+.pcard{display:flex;align-items:center;gap:14px;padding:6px 0 18px}
+.pavatar{
+  width:64px;height:64px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:linear-gradient(140deg,#25f4ee,#fe2c55);
+}
+.pavatar svg{width:34px;height:34px;fill:#fff;opacity:.92}
+.pstats{display:flex;gap:18px;flex:1}
+.pstats div{display:flex;flex-direction:column;gap:1px}
+.pstats b{font-size:19px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.pstats span{font-size:11px;color:var(--text-3);line-height:1.25}
+
+.menu{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.mrow{
+  display:grid;grid-template-columns:26px 1fr auto;grid-template-rows:auto auto;
+  align-items:center;gap:2px 12px;padding:13px 4px;text-align:left;
+  border-bottom:1px solid var(--line);
+}
+.mrow svg{grid-row:1 / span 2;width:22px;height:22px;fill:var(--text-2)}
+.mrow .mt{font-size:14.5px;font-weight:600}
+.mrow .ms{grid-column:2;font-size:11.5px;color:var(--text-3)}
+.mrow .mc{grid-row:1 / span 2;grid-column:3;color:var(--text-3);font-size:19px}
+.mrow:active{background:var(--surface-2)}
 
 /* sélection de thèmes */
 .grid{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 4px}
@@ -418,6 +489,14 @@ a{color:var(--accent-2)}
     </div>
   </section>
 
+  <!-- ========================= TOP TABS ========================= -->
+  <header id="topbar" hidden>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="subs" aria-selected="false">Abonnements<i class="cnt" id="subsCnt" hidden>0</i></button>
+      <button class="tab" role="tab" data-tab="foryou" aria-selected="true">Pour toi</button>
+    </div>
+  </header>
+
   <!-- ========================= FEEDS ========================= -->
   <div class="feed" id="feed-foryou" hidden></div>
   <div class="feed" id="feed-subs" hidden></div>
@@ -447,6 +526,17 @@ a{color:var(--accent-2)}
     <div class="pbody" id="subsList"></div>
   </aside>
 
+  <!-- ========================= PROFILE PANEL ========================= -->
+  <aside class="panel" id="panelProfile" hidden>
+    <div class="phead">
+      <button class="iconbtn" data-close="panelProfile" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <h2>Profil</h2>
+    </div>
+    <div class="pbody" id="profileBody"></div>
+  </aside>
+
   <!-- ========================= TOPICS PANEL ========================= -->
   <aside class="panel" id="panelTopics" hidden>
     <div class="phead">
@@ -472,10 +562,13 @@ a{color:var(--accent-2)}
 
   <!-- ========================= BOTTOM NAV ========================= -->
   <nav id="bottomnav" hidden>
-    <button class="nav" data-nav="foryou" aria-selected="true"><span>Pour toi</span></button>
-    <button class="nav" data-nav="subs" aria-selected="false"><span>Abonnements</span><i class="cnt" id="subsCnt" hidden>0</i></button>
-    <button class="nav" data-nav="topics" aria-selected="false"><span>Intérêts</span></button>
-    <button class="nav" data-nav="settings" aria-selected="false"><span>Réglages</span></button>
+    <button class="nav" data-nav="home" aria-selected="true"><span>Accueil</span></button>
+    <button class="nav" data-nav="friends" aria-selected="false"><span>Amis</span></button>
+    <button class="nav navadd" data-nav="add" aria-label="Créer">
+      <span class="plusbtn"><i class="l"></i><i class="r"></i><i class="c"></i></span>
+    </button>
+    <button class="nav" data-nav="inbox" aria-selected="false"><span>Messages</span></button>
+    <button class="nav" data-nav="profile" aria-selected="false"><span>Profil</span></button>
   </nav>
 
   <div id="toast" role="status"></div>
@@ -1714,9 +1807,11 @@ const ICON = {
   share : `<svg viewBox="0 0 24 24"><path d="M14 2.8v3.5C8.3 7 5.3 11 4.8 18.4c2.1-3.6 5.1-5 9.2-5v3.7l7.2-7.6z"/></svg>`,
   plus  : `<svg viewBox="0 0 24 24"><path d="M10.8 4h2.4v6.8H20v2.4h-6.8V20h-2.4v-6.8H4v-2.4h6.8z"/></svg>`,
   check : `<svg viewBox="0 0 24 24"><path d="M9.5 17.2 4.3 12l1.7-1.7 3.5 3.5 8.5-8.5L19.7 7z"/></svg>`,
-  /* Barre de navigation */
+  /* Barre de navigation, calquée sur les cinq entrées de TikTok */
   nHome : `<svg viewBox="0 0 24 24"><path d="M12 3 2.6 11.2h2.6V21h5.1v-6h3.4v6h5.1v-9.8h2.6z"/></svg>`,
-  nSubs : `<svg viewBox="0 0 24 24"><path d="M9 11.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 1.8c-3.5 0-6.6 1.8-6.6 4V21h13.2v-3.7c0-2.2-3.1-4-6.6-4zM17.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm.4 1.8c-.6 0-1.2.1-1.7.2 1.1 1 1.8 2.2 1.8 3.6V21h5.6v-3c0-2-2.6-4.2-5.7-4.2z"/></svg>`,
+  nFriends: `<svg viewBox="0 0 24 24"><path d="M8.6 11.4a3.9 3.9 0 1 0 0-7.8 3.9 3.9 0 0 0 0 7.8zm0 1.7c-3.4 0-6.4 1.8-6.4 3.9V20.4h12.8v-3.4c0-2.1-3-3.9-6.4-3.9zM17.2 11.9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm.4 1.7c-.6 0-1.1.1-1.6.2 1 1 1.7 2.1 1.7 3.2v3.4h4.1v-2.9c0-1.9-1.9-3.9-4.2-3.9z"/></svg>`,
+  nInbox: `<svg viewBox="0 0 24 24"><path d="M4.2 3.6h15.6c1.2 0 2.2 1 2.2 2.2v10.9c0 1.2-1 2.2-2.2 2.2H8.9l-4.4 3.5c-.6.5-1.5 0-1.5-.8V5.8c0-1.2 1-2.2 2.2-2.2zm2.4 6.1a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zm5.4 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zm5.4 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z"/></svg>`,
+  nProfile: `<svg viewBox="0 0 24 24"><path d="M12 11.6a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6zm0 1.8c-4.3 0-7.8 2.3-7.8 5.1V21h15.6v-2.5c0-2.8-3.5-5.1-7.8-5.1z"/></svg>`,
   nTopics: `<svg viewBox="0 0 24 24"><path d="M3 6.2h7.4v2.2H3zM16.6 6.2H21v2.2h-4.4zM3 15.6h4.4v2.2H3zM13.6 15.6H21v2.2h-7.4z"/><circle cx="13.5" cy="7.3" r="3"/><circle cx="10.5" cy="16.7" r="3"/></svg>`,
   /* `fill-rule=evenodd` : le disque intérieur devient un trou, sans quoi
      l'engrenage se lisait comme une tache. */
@@ -2586,6 +2681,7 @@ const UI = {
       Store.del('key'); State.key = '';
       $('#setup').hidden = false;
       $('#bottomnav').hidden = true;
+      $('#topbar').hidden = true;
       $('#keyErr').textContent = 'Clé refusée par YouTube. Vérifie qu\'elle est active et que « YouTube Data API v3 » est activée.';
       this.hideState();
       return;
@@ -2624,8 +2720,8 @@ const UI = {
   /* ---------- onglets ---------- */
   async tab(name, force) {
     if (!force && name === current && !feeds[name]?.root.hidden) return;
-    $$('.nav').forEach(b => b.setAttribute('aria-selected',
-      String(b.dataset.nav === name)));
+    $$('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    this.navSelect('home');
     feeds[current]?.suspend();
     current = name;
     this.hideState();
@@ -2635,6 +2731,14 @@ const UI = {
     await f.start();
     if (f.items.length) { f.root.hidden = false; f.resume(); }
     this.refreshSubsBadge();
+  },
+
+  /** Sélection dans la barre du bas. */
+  navSelect(which) {
+    $$('.nav').forEach(b => {
+      if (b.dataset.nav === 'add') return;
+      b.setAttribute('aria-selected', String(b.dataset.nav === which));
+    });
   },
 
   /* ---------- panneaux ---------- */
@@ -2657,11 +2761,13 @@ const UI = {
     if (id === 'panelSettings') this.renderSettings();
     if (id === 'panelSubs') this.renderSubs();
     if (id === 'panelTopics') this.renderTopics();
+    if (id === 'panelProfile') { this.renderProfile(); this.navSelect('profile'); }
   },
   closePanel(id) {
     const p = $('#' + id);
     p.classList.remove('on');
     setTimeout(() => { p.hidden = true; }, 340);
+    if (id === 'panelProfile') this.navSelect('home');
 
     /* Un changement de thème ou de mot-clé doit se voir tout de suite : sans
        ça la file déjà constituée continuait de servir l'ancienne sélection
@@ -2729,6 +2835,51 @@ const UI = {
          <button class="mini" id="subsScanNow">Scanner</button></div>`;
   },
 
+  /* ---------- panneau profil ---------- */
+  renderProfile() {
+    const favs = Object.keys(State.favorites).length;
+    const liked = Object.keys(State.liked).length;
+    const st = State.stats;
+    const cloud = Cloud.configured()
+      ? { ok: 'à jour', syncing: 'en cours…', error: 'erreur', off: 'en attente' }[Cloud.status] || '—'
+      : 'non configurée';
+
+    $('#profileBody').innerHTML = `
+      <div class="pcard">
+        <div class="pavatar">${ICON.nProfile}</div>
+        <div class="pstats">
+          <div><b>${favs}</b><span>chaîne${favs > 1 ? 's' : ''} suivie${favs > 1 ? 's' : ''}</span></div>
+          <div><b>${liked}</b><span>j'aime</span></div>
+          <div><b>${fmtNum(State.seen.length)}</b><span>vidéo${State.seen.length > 1 ? 's' : ''} vue${State.seen.length > 1 ? 's' : ''}</span></div>
+        </div>
+      </div>
+
+      <div class="menu">
+        <button class="mrow" data-go="panelTopics">
+          ${ICON.nTopics}<span class="mt">Centres d'intérêt</span>
+          <span class="ms">${Discovery.onSeeds().length} mot(s)-clé · ${Discovery.onCats().length + Discovery.onTopics().length} thème(s)</span>
+          <span class="mc">›</span></button>
+        <button class="mrow" data-go="panelSubs">
+          ${ICON.nFriends}<span class="mt">Mes chaînes</span>
+          <span class="ms">${favs ? `${Subs.totalNew()} nouveauté(s)` : 'aucune chaîne suivie'}</span>
+          <span class="mc">›</span></button>
+        <button class="mrow" data-go="panelSettings">
+          ${ICON.nCog}<span class="mt">Réglages</span>
+          <span class="ms">filtre ${esc(State.settings.strictness)} · ≤ ${State.settings.maxSeconds}s · feuille ${esc(cloud)}</span>
+          <span class="mc">›</span></button>
+      </div>
+
+      <div class="sechead">Ce filtre en chiffres</div>
+      <div class="row" style="display:block">
+        <div class="kv"><span>Vidéos analysées</span><b>${st.fetched}</b></div>
+        <div class="kv"><span>Retenues en français</span><b style="color:var(--accent-2)">${st.keptFr}</b></div>
+        <div class="kv"><span>Écartées — langue</span><b>${st.rejectedLang}</b></div>
+        <div class="kv"><span>Quota du jour</span><b>${Quota.used} / ${Quota.limit} u</b></div>
+        <div class="meter"><i style="width:${clamp(Quota.used / Quota.limit * 100, 0, 100)}%"></i></div>
+      </div>
+      <div class="rd" style="margin-top:18px;text-align:center">Shorts FR · lecture via le lecteur YouTube intégré</div>`;
+  },
+
   /* ---------- panneau centres d'intérêt ---------- */
   async renderTopics() {
     const body = $('#topicsBody');
@@ -2784,11 +2935,6 @@ const UI = {
     const det = { ready: 'actif (on-device)', absent: 'non supporté par ce navigateur', unknown: '…' }[Lang.detectorState] || 'indisponible';
 
     $('#settingsBody').innerHTML = `
-      <div class="sechead">Centres d'intérêt</div>
-      <div class="row"><div class="rx"><div class="rt">Thèmes et mots-clés</div>
-        <div class="rd">${Discovery.onSeeds().length} mot(s)-clé · ${Discovery.onCats().length} catégorie(s) · ${Discovery.onTopics().length} thème(s)${State.topics.only ? ' · exclusif' : ''}</div></div>
-        <button class="mini" id="openTopics">Configurer</button></div>
-
       <div class="sechead">Filtre de langue</div>
       <div class="row"><div class="rx"><div class="rt">Sévérité</div>
         <div class="rd">${s.strictness === 'strict'
@@ -2874,27 +3020,33 @@ const UI = {
    ══════════════════════════════════════════════════════════════════════ */
 /* Les glyphes vivent dans ICON, pas dans le HTML : celui-ci est statique et
    n'interpole rien — « ${ICON.nHome} » s'y affichait tel quel. */
-const NAV_ICON = { foryou: 'nHome', subs: 'nSubs', topics: 'nTopics', settings: 'nCog' };
-$$('.nav').forEach(b => b.insertAdjacentHTML('afterbegin', ICON[NAV_ICON[b.dataset.nav]] || ''));
+const NAV_ICON = { home: 'nHome', friends: 'nFriends', inbox: 'nInbox', profile: 'nProfile' };
+$$('.nav').forEach(b => {
+  const g = ICON[NAV_ICON[b.dataset.nav]];
+  if (g) b.insertAdjacentHTML('afterbegin', g);
+});
 
+/* La barre reproduit les cinq entrées de TikTok. « Amis », « + » et
+   « Messages » n'ont pas d'équivalent ici : le repère visuel est conservé,
+   l'appui le dit franchement plutôt que de faire semblant. */
+const ABSENT = {
+  friends: 'Pas de section Amis ici — le feed est public',
+  add     : 'Cette application ne publie rien sur YouTube',
+  inbox   : 'Pas de messagerie — tes nouveautés sont dans « Abonnements »',
+};
 $$('.nav').forEach(b => b.addEventListener('click', () => {
   const d = b.dataset.nav;
-  if (d === 'foryou' || d === 'subs') UI.tab(d);
-  else if (d === 'topics') UI.openPanel('panelTopics');
-  else if (d === 'settings') UI.openPanel('panelSettings');
+  if (d === 'home') { UI.tab(current === 'subs' ? 'subs' : 'foryou'); UI.navSelect('home'); }
+  else if (d === 'profile') UI.openPanel('panelProfile');
+  else UI.toast(ABSENT[d] || '');
 }));
+
+/* Les onglets du haut basculent de feed. */
+$$('.tab').forEach(b => b.addEventListener('click', () => UI.tab(b.dataset.tab)));
 $$('[data-close]').forEach(b => b.addEventListener('click', () => UI.closePanel(b.dataset.close)));
 $('#nudge').addEventListener('click', () => UI.setSound(true));
 
-/* Appui prolongé sur « Abonnements » : la gestion des chaînes suivies. */
-(() => {
-  const btn = $('.nav[data-nav="subs"]');
-  let t = 0;
-  const start = () => { clearTimeout(t); t = setTimeout(() => { t = 0; UI.openPanel('panelSubs'); }, 520); };
-  const stop = () => clearTimeout(t);
-  btn.addEventListener('pointerdown', start);
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => btn.addEventListener(e, stop));
-})();
+
 
 /* panneau abonnements */
 $('#subsList').addEventListener('click', async e => {
@@ -2923,6 +3075,14 @@ $('#subsRefresh').addEventListener('click', async e => {
 });
 document.addEventListener('click', async e => {
   if (e.target.id === 'subsScanNow') $('#subsRefresh').click();
+});
+
+/* panneau profil : les entrées mènent aux autres panneaux */
+$('#profileBody').addEventListener('click', e => {
+  const row = e.target.closest('[data-go]');
+  if (!row) return;
+  UI.closePanel('panelProfile');
+  setTimeout(() => UI.openPanel(row.dataset.go), 120);
 });
 
 /* panneau centres d'intérêt */
@@ -2989,8 +3149,6 @@ $('#settingsBody').addEventListener('click', e => {
   if (t.closest('#swSound')) { UI.setSound(!State.settings.sound); UI.renderSettings(); return; }
   if (t.closest('#swAuto'))  { State.settings.autoAdvance = !State.settings.autoAdvance; save.settings(); UI.renderSettings(); return; }
   if (t.closest('#swLoop'))  { State.settings.loopSingle = !State.settings.loopSingle; save.settings(); UI.renderSettings(); return; }
-  if (t.id === 'openTopics') { UI.closePanel('panelSettings'); UI.openPanel('panelTopics'); return; }
-
   if (t.id === 'cloudSave') {
     const url = $('#cloudUrl').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url)) {
@@ -3095,6 +3253,7 @@ async function submitKey() {
 
 async function boot() {
   $('#bottomnav').hidden = false;
+  $('#topbar').hidden = false;
   UI.showState('loading', '', '');
   Lang.initDetector();                       // non bloquant
 

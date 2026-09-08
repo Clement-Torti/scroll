@@ -300,13 +300,21 @@ intereses es nuestro, y por eso guardarlo importa.
 | `l` | me gusta |
 | `Esc` | cerrar paneles |
 
-Gestos: swipe vertical, un toque para pausar, doble toque para «me gusta»,
-y **pulsación larga** en *Abonnements* para gestionar los canales seguidos.
+Gestos: swipe vertical, un toque para pausar, doble toque para «me gusta».
 
-La interfaz imita la de TikTok: barra de navegación abajo (Pour toi,
-Abonnements, Intérêts, Réglages), acciones a la derecha con iconos rellenos, y
-el avatar del canal con su botón de seguir encima. No hay barra superior — el
-contenido va a sangre.
+La interfaz replica la de TikTok:
+
+- **Arriba, centrado**: las pestañas `Abonnements | Pour toi`, con el
+  subrayado en la activa y el contador de novedades en Abonnements.
+- **Abajo**: los cinco elementos de TikTok — Accueil, Amis, el botón `+` con
+  sus filos cian y rojo, Messages, Profil.
+- **A la derecha**: avatar del canal con su botón de seguir encima, y las
+  acciones con iconos rellenos de 34 px.
+
+*Amis*, `+` y *Messages* no tienen equivalente aquí. Se conserva la referencia
+visual, pero al pulsarlos lo dicen claramente en vez de fingir una pantalla
+vacía. Todo lo que sí existe vive en **Profil**: Centres d'intérêt, Mes
+chaînes y Réglages, con las estadísticas del filtro y el consumo de cuota.
 
 ## Límites conocidos
 
