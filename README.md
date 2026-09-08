@@ -172,19 +172,35 @@ La clave API sigue en `localStorage`. El **perfil** — canales descubiertos,
 suscripciones, temas, intereses, «me gusta» — vive en una hoja de cálculo, así
 que sobrevive al borrado del navegador y sigue a todos tus dispositivos.
 
+La hoja **no necesita ser pública**. El script se ejecuta con tu propia
+autorización (*ejecutar como: yo*), así que accede a una hoja privada sin
+problema. Déjala privada.
+
 ### Puesta en marcha
 
-1. Crea una hoja de cálculo vacía y copia su ID de la URL
-   (`/spreadsheets/d/<ID>/edit`).
-2. [script.google.com](https://script.google.com) → Nuevo proyecto → pega
+**No hay nada que configurar en `Code.gs`.**
+
+1. [script.google.com](https://script.google.com) → Nuevo proyecto → pega
    [apps-script/Code.gs](apps-script/Code.gs).
-3. Rellena `SHEET_ID`. Es lo único que hay que configurar.
-4. Ejecuta la función `setup()` una vez, para crear las pestañas y aceptar los
-   permisos.
-5. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
+2. Ejecuta la función `setup()` una vez. Concede los permisos; el script
+   **crea la hoja él mismo** («Shorts FR — profil») en tu Drive, guarda su ID
+   en las propiedades del script y escribe la dirección en el registro.
+3. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
    acceso *cualquier persona*. Copia la URL `.../exec`.
-6. Pega esa URL en la app — ya en la pantalla de inicio, o después en Ajustes →
-   Sincronización → **Connecter**.
+4. Pega esa URL en la app — ya en la pantalla de inicio, o después en Ajustes →
+   Sincronización → **Connecter**. Ahí aparece un enlace directo a tu hoja.
+
+### Usar una hoja que ya tienes
+
+Si prefieres una hoja concreta, no hace falta escribir su ID en el archivo
+(cosa poco deseable en un repo público). Se apunta una sola vez desde el editor:
+
+```js
+function go() { useSheet('1AbC…'); }   // acepta el ID o la URL entera
+```
+
+El ID queda en las propiedades del script, no en git. `forgetSheet()` deshace
+el enlace y hace que el siguiente arranque cree una hoja nueva.
 
 > **Al modificar `Code.gs` hay que volver a desplegar.** La URL `/exec` apunta a
 > una **versión congelada** del script: guardar en el editor no cambia nada de
@@ -250,8 +266,8 @@ parten en trozos (`seen#0`, `seen#1`…) y se reensamblan al leer. Y las
 escrituras se hacen en **un solo `setValues()`** por pestaña: celda a celda,
 300 canales tardarían minutos y agotarían las cuotas de Apps Script.
 
-Sobre lo «público»: la hoja puede ser pública **en lectura** sin problema. La
-clave API de YouTube nunca se envía a la hoja — se queda en el `localStorage`.
+La clave API de YouTube nunca se envía a la hoja — se queda en el
+`localStorage` del navegador.
 
 ---
 

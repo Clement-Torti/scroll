@@ -2521,7 +2521,8 @@ const UI = {
           <input id="cloudUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(State.cloud.url)}" spellcheck="false">
           <button class="btn primary block" id="cloudSave">Connecter</button>
         </div>
-        <div class="rd" style="margin-top:9px">L'URL <code>/exec</code> est le secret : elle contient un identifiant long et non devinable. À traiter comme un mot de passe — ne pas la publier. Rien de destructeur n'est exposé côté script. La clé API YouTube n'est jamais envoyée à la feuille.</div>
+        ${State.cloud.sheetUrl ? `<div style="margin-top:11px"><a href="${esc(State.cloud.sheetUrl)}" target="_blank" rel="noopener" class="btn ghost block">Ouvrir la feuille ↗</a></div>` : ''}
+        <div class="rd" style="margin-top:9px">Le script crée la feuille lui-même au premier appel — rien à configurer dans <code>Code.gs</code>. L'URL <code>/exec</code> est le secret : elle contient un identifiant long et non devinable, à traiter comme un mot de passe. La clé API YouTube n'est jamais envoyée à la feuille.</div>
       </div>
 
       <div class="sechead">Données</div>
@@ -2647,6 +2648,7 @@ $('#settingsBody').addEventListener('click', e => {
     (async () => {
       try {
         const r = await Cloud.rpc('ping');
+        if (r.url) { State.cloud.sheetUrl = r.url; save.cloud(); }   // le script a créé la feuille
         await Cloud.pull();
         const ok = await Cloud.push(true);
         const c = r.counts || {};
