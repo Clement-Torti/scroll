@@ -1,0 +1,2238 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="Un feed vertical infini de Shorts YouTube 100% en français.">
+<title>Shorts FR</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇫🇷</text></svg>">
+<style>
+/* ============================ TOKENS ============================ */
+:root{
+  --bg:#000;
+  --surface:#0e0e11;
+  --surface-2:#181820;
+  --surface-3:#23232e;
+  --line:rgba(255,255,255,.10);
+  --line-2:rgba(255,255,255,.18);
+  --text:#fff;
+  --text-2:rgba(255,255,255,.68);
+  --text-3:rgba(255,255,255,.42);
+  --accent:#ff3b5c;
+  --accent-2:#2ee6a8;
+  --fr-blue:#3a6fd8;
+  --fr-red:#ef4135;
+  --warn:#ffb43a;
+  --r-sm:8px; --r-md:14px; --r-lg:22px; --r-xl:28px;
+  --slide-w:min(100vw, 460px);
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  background:var(--bg);color:var(--text);
+  font:400 14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent-2)}
+[hidden]{display:none!important}
+::selection{background:var(--accent);color:#fff}
+
+/* ============================ APP SHELL ============================ */
+#app{position:fixed;inset:0;display:flex;justify-content:center;background:#050506}
+.stage{position:relative;width:var(--slide-w);height:100%;background:#000;overflow:hidden}
+@media (min-width:640px){
+  .stage{box-shadow:0 0 0 1px var(--line),0 30px 80px -20px rgba(0,0,0,.9)}
+  #app{background:radial-gradient(1200px 800px at 50% -10%,#16161d,#05050699 60%,#050506)}
+}
+
+/* ============================ SETUP SCREEN ============================ */
+#setup{
+  position:absolute;inset:0;z-index:60;overflow-y:auto;
+  padding:calc(28px + var(--safe-t)) 22px calc(28px + var(--safe-b));
+  background:linear-gradient(170deg,#12121a,#05050a 60%);
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.brand .flag{width:26px;height:18px;border-radius:3px;overflow:hidden;display:flex;flex:none}
+.brand .flag i{flex:1}
+.brand .flag i:nth-child(1){background:#0055a4}
+.brand .flag i:nth-child(2){background:#fff}
+.brand .flag i:nth-child(3){background:#ef4135}
+#setup h1{margin:26px 0 8px;font-size:30px;line-height:1.1;letter-spacing:-.03em;font-weight:800}
+#setup .lede{color:var(--text-2);margin:0 0 22px;font-size:14.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px}
+.card+.card{margin-top:14px}
+.card h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3)}
+.field{display:flex;flex-direction:column;gap:8px}
+.field input{
+  width:100%;padding:13px 14px;border-radius:var(--r-md);
+  background:var(--surface-2);border:1px solid var(--line-2);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+}
+.field input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:13px 18px;border-radius:999px;font-weight:700;font-size:14.5px;
+  background:var(--surface-3);transition:transform .12s var(--ease),filter .15s;
+}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(100deg,var(--accent),#ff6a43);color:#fff}
+.btn.ghost{background:transparent;border:1px solid var(--line-2)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.steps{margin:0;padding-left:20px;color:var(--text-2);font-size:13.5px;line-height:1.7}
+.steps code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:12px;color:var(--text)}
+.note{font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.55}
+.err{color:#ff7b8f;font-size:13px;min-height:18px;margin-top:8px}
+
+/* ============================ TOP BAR ============================ */
+#topbar{
+  position:absolute;z-index:30;top:0;left:0;right:0;
+  padding:calc(10px + var(--safe-t)) 12px 26px;
+  display:flex;align-items:center;gap:6px;
+  background:linear-gradient(#000000cc,#0000);
+  pointer-events:none;
+}
+#topbar>*{pointer-events:auto}
+.tabs{display:flex;gap:2px;margin:0 auto;position:relative}
+.tab{
+  padding:7px 14px;border-radius:999px;font-weight:700;font-size:14.5px;
+  color:var(--text-3);position:relative;transition:color .18s;
+  text-shadow:0 1px 8px rgba(0,0,0,.6);
+}
+.tab[aria-selected="true"]{color:#fff}
+.tab[aria-selected="true"]::after{
+  content:"";position:absolute;left:50%;translate:-50% 0;bottom:1px;
+  width:20px;height:2.5px;border-radius:2px;background:#fff;
+}
+.tab .cnt{
+  display:inline-block;min-width:17px;padding:0 4px;margin-left:5px;
+  background:var(--accent);color:#fff;border-radius:999px;
+  font-size:10.5px;font-weight:800;line-height:17px;text-align:center;vertical-align:1px;
+}
+.iconbtn{
+  width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(20,20,26,.55);backdrop-filter:blur(12px);
+  border:1px solid var(--line);flex:none;transition:transform .12s var(--ease);
+}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ============================ FEED ============================ */
+.feed{
+  position:absolute;inset:0;overflow-y:scroll;overflow-x:hidden;
+  scroll-snap-type:y mandatory;scrollbar-width:none;
+  overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;
+}
+.feed::-webkit-scrollbar{display:none}
+.feed[hidden]{display:none!important}
+.slide{
+  position:relative;width:100%;height:100%;scroll-snap-align:start;scroll-snap-stop:always;
+  background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.pwrap{position:absolute;inset:0;background:#000}
+.pwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.poster{
+  position:absolute;inset:0;background-size:cover;background-position:center;
+  filter:blur(18px) saturate(1.3) brightness(.5);transform:scale(1.15);
+}
+.poster.sharp{filter:none;transform:none;background-size:contain;background-repeat:no-repeat;background-color:#000}
+.slide .veil{
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(#0000 46%,#0000004d 66%,#000000c9);
+}
+.tapzone{position:absolute;inset:0;z-index:5}
+
+/* play/pause pulse */
+.pulse{
+  position:absolute;top:50%;left:50%;translate:-50% -50%;z-index:8;
+  width:74px;height:74px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(0,0,0,.42);backdrop-filter:blur(6px);
+  opacity:0;transition:opacity .25s,transform .25s var(--ease);pointer-events:none;transform:translate(-50%,-50%) scale(.8)
+}
+.pulse.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.pulse svg{width:30px;height:30px;fill:#fff}
+
+/* buffering */
+.spin{
+  position:absolute;top:50%;left:50%;margin:-13px 0 0 -13px;z-index:7;
+  width:26px;height:26px;border-radius:50%;
+  border:2.5px solid rgba(255,255,255,.22);border-top-color:#fff;
+  animation:spin .7s linear infinite;opacity:0;transition:opacity .2s
+}
+.spin.on{opacity:1}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ============================ SLIDE OVERLAY ============================ */
+.info{
+  position:absolute;z-index:10;left:0;right:64px;bottom:calc(16px + var(--safe-b));
+  padding:0 14px;display:flex;flex-direction:column;gap:9px;
+}
+.chan{display:flex;align-items:center;gap:9px}
+.chan img{width:34px;height:34px;border-radius:50%;background:var(--surface-3);flex:none;object-fit:cover}
+.chan .cname{font-weight:700;font-size:14px;text-shadow:0 1px 6px rgba(0,0,0,.7);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.follow{
+  padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:800;flex:none;
+  background:var(--accent);color:#fff;transition:transform .12s var(--ease)
+}
+.follow:active{transform:scale(.92)}
+.follow.on{background:rgba(255,255,255,.14);border:1px solid var(--line-2);color:var(--text-2)}
+.vtitle{
+  font-size:13.5px;line-height:1.4;text-shadow:0 1px 6px rgba(0,0,0,.75);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  cursor:pointer;
+}
+.vtitle.open{-webkit-line-clamp:8}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{
+  font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  padding:3px 8px;border-radius:999px;
+  background:rgba(0,0,0,.42);backdrop-filter:blur(8px);border:1px solid var(--line);
+  color:var(--text-2);display:inline-flex;align-items:center;gap:4px
+}
+.chip.fr{color:#fff;border-color:transparent;
+  background:linear-gradient(100deg,rgba(58,111,216,.85),rgba(239,65,53,.85))}
+.chip.src{color:var(--text-3)}
+
+/* right rail */
+.rail{
+  position:absolute;z-index:10;right:8px;bottom:calc(18px + var(--safe-b));
+  display:flex;flex-direction:column;align-items:center;gap:16px
+}
+.rail button{display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .12s var(--ease)}
+.rail button:active{transform:scale(.86)}
+.rail svg{width:27px;height:27px;fill:none;stroke:#fff;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+.rail .lbl{font-size:10.5px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+.rail .like.on svg{fill:var(--accent);stroke:var(--accent)}
+.rail .flag.on svg{stroke:var(--warn)}
+
+/* progress */
+.bar{position:absolute;z-index:12;left:0;right:0;bottom:0;height:22px;display:flex;align-items:flex-end;cursor:pointer}
+.bar i{display:block;height:2.5px;width:100%;background:rgba(255,255,255,.18)}
+.bar i b{display:block;height:100%;width:0;background:#fff;border-radius:0 2px 2px 0}
+
+/* ============================ STATES ============================ */
+.state{
+  position:absolute;inset:0;z-index:20;display:grid;place-content:center;justify-items:center;
+  gap:14px;padding:40px 30px;text-align:center;background:#05050a
+}
+.state h2{margin:0;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.state p{margin:0;color:var(--text-2);font-size:13.5px;max-width:300px}
+.pump{display:flex;gap:5px}
+.pump i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pump 1s infinite var(--ease)}
+.pump i:nth-child(2){animation-delay:.13s;background:#fff}
+.pump i:nth-child(3){animation-delay:.26s;background:var(--fr-blue)}
+@keyframes pump{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-9px);opacity:1}}
+
+/* sound nudge */
+#nudge{
+  position:absolute;z-index:25;left:50%;translate:-50% 0;top:calc(58px + var(--safe-t));
+  display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;
+  background:rgba(255,255,255,.95);color:#000;font-weight:800;font-size:13px;
+  box-shadow:0 8px 30px rgba(0,0,0,.5);animation:drop .4s var(--ease)
+}
+#nudge svg{width:16px;height:16px;fill:none;stroke:#000;stroke-width:2.1;stroke-linecap:round}
+@keyframes drop{from{opacity:0;transform:translateY(-12px)}}
+
+/* ============================ PANELS ============================ */
+.panel{
+  position:absolute;z-index:50;inset:0;display:flex;flex-direction:column;
+  background:var(--surface);
+  transform:translateY(100%);transition:transform .34s var(--ease);
+}
+.panel.on{transform:none}
+.panel[hidden]{display:flex!important}
+.phead{
+  display:flex;align-items:center;gap:12px;flex:none;
+  padding:calc(14px + var(--safe-t)) 16px 14px;border-bottom:1px solid var(--line)
+}
+.phead h2{margin:0;font-size:16.5px;font-weight:800;letter-spacing:-.02em;flex:1}
+.pbody{flex:1;overflow-y:auto;padding:14px 16px calc(30px + var(--safe-b));scrollbar-width:thin}
+.pbody::-webkit-scrollbar{width:6px}
+.pbody::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+
+/* channel row */
+.crow{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line)}
+.crow img{width:44px;height:44px;border-radius:50%;background:var(--surface-3);flex:none;object-fit:cover}
+.crow .cx{flex:1;min-width:0}
+.crow .cn{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .cs{font-size:11.5px;color:var(--text-3);margin-top:2px}
+.crow .cs b{color:var(--accent-2)}
+.mini{padding:6px 11px;border-radius:999px;font-size:12px;font-weight:700;background:var(--surface-3);flex:none}
+.mini.danger{color:#ff8195}
+
+/* settings bits */
+.row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.row .rx{flex:1;min-width:0}
+.row .rt{font-size:14px;font-weight:600}
+.row .rd{font-size:12px;color:var(--text-3);margin-top:3px;line-height:1.5}
+.sw{width:44px;height:26px;border-radius:999px;background:var(--surface-3);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .22s var(--ease)}
+.sw.on{background:var(--accent-2)}
+.sw.on::after{transform:translateX(18px)}
+.seg{display:flex;background:var(--surface-2);border-radius:999px;padding:3px;gap:2px;flex:none}
+.seg button{padding:6px 11px;border-radius:999px;font-size:12px;font-weight:700;color:var(--text-3)}
+.seg button.on{background:var(--surface-3);color:#fff}
+.meter{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:8px}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-2),var(--warn));border-radius:3px;transition:width .4s}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 0;color:var(--text-2)}
+.kv b{color:#fff;font-variant-numeric:tabular-nums}
+.sechead{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-3);margin:22px 0 4px;font-weight:800}
+.sechead:first-child{margin-top:4px}
+.empty{text-align:center;padding:52px 20px;color:var(--text-3)}
+.empty .big{font-size:34px;margin-bottom:10px}
+
+/* toast */
+#toast{
+  position:absolute;z-index:70;left:50%;translate:-50% 0;bottom:calc(84px + var(--safe-b));
+  padding:11px 17px;border-radius:var(--r-md);max-width:82%;text-align:center;
+  background:rgba(255,255,255,.96);color:#000;font-weight:700;font-size:13px;
+  box-shadow:0 10px 34px rgba(0,0,0,.55);
+  opacity:0;transform:translate(-50%,14px);transition:opacity .22s,transform .22s var(--ease);pointer-events:none
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.bad{background:#ff4d68;color:#fff}
+
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div id="app"><div class="stage">
+
+  <!-- ========================= SETUP ========================= -->
+  <section id="setup">
+    <div class="brand"><span class="flag"><i></i><i></i><i></i></span> Shorts&nbsp;FR</div>
+    <h1>Un feed infini de Shorts,<br>uniquement en français.</h1>
+    <p class="lede">Découverte automatique via l'API YouTube, filtre de langue en 5 couches, et tes chaînes préférées suivies pour ne rien manquer.</p>
+
+    <div class="card">
+      <h3>Clé API YouTube Data v3</h3>
+      <div class="field">
+        <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIzaSy..." aria-label="Clé API">
+        <button id="keyGo" class="btn primary block">Lancer le feed</button>
+      </div>
+      <div class="err" id="keyErr"></div>
+      <p class="note">La clé reste dans le <code>localStorage</code> de ce navigateur. Elle n'est envoyée qu'à <code>googleapis.com</code>.</p>
+    </div>
+
+    <div class="card">
+      <h3>Obtenir une clé (2 min, gratuit)</h3>
+      <ol class="steps">
+        <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Crée un projet</a> sur Google Cloud.</li>
+        <li>Active <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a>.</li>
+        <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Identifiants</a> → <em>Créer</em> → <em>Clé API</em>.</li>
+        <li>Restreins-la : <code>Sites web</code> → ton domaine <code>*.github.io/*</code>, et API → <code>YouTube Data API v3</code>.</li>
+      </ol>
+      <p class="note">Quota gratuit : 10 000 unités/jour. L'app est optimisée pour en consommer le moins possible (voir « Quota » dans les réglages).</p>
+    </div>
+  </section>
+
+  <!-- ========================= TOP BAR ========================= -->
+  <header id="topbar" hidden>
+    <button class="iconbtn" id="btnSubsPanel" aria-label="Mes chaînes">
+      <svg viewBox="0 0 24 24"><path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3.4"/><path d="M18 8v6M15 11h6"/></svg>
+    </button>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="foryou" aria-selected="true">Pour toi</button>
+      <button class="tab" role="tab" data-tab="subs" aria-selected="false">Abonnements<span class="cnt" id="subsCnt" hidden>0</span></button>
+    </div>
+    <button class="iconbtn" id="btnSettings" aria-label="Réglages">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.11A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.11A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.7a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.11A1.7 1.7 0 0 0 15 4.7a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.3 9v.03a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.11A1.7 1.7 0 0 0 19.4 15z"/></svg>
+    </button>
+  </header>
+
+  <!-- ========================= FEEDS ========================= -->
+  <div class="feed" id="feed-foryou" hidden></div>
+  <div class="feed" id="feed-subs" hidden></div>
+
+  <!-- ========================= LOADING / EMPTY ========================= -->
+  <div class="state" id="stateBox" hidden>
+    <div class="pump" id="statePump"><i></i><i></i><i></i></div>
+    <h2 id="stateTitle">Recherche de Shorts français…</h2>
+    <p id="stateMsg"></p>
+    <button class="btn ghost" id="stateBtn" hidden></button>
+  </div>
+
+  <div id="nudge" hidden>
+    <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+    Appuie pour le son
+  </div>
+
+  <!-- ========================= SUBS PANEL ========================= -->
+  <aside class="panel" id="panelSubs" hidden>
+    <div class="phead">
+      <button class="iconbtn" data-close="panelSubs" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <h2>Mes chaînes</h2>
+      <button class="mini" id="subsRefresh">Actualiser</button>
+    </div>
+    <div class="pbody" id="subsList"></div>
+  </aside>
+
+  <!-- ========================= SETTINGS PANEL ========================= -->
+  <aside class="panel" id="panelSettings" hidden>
+    <div class="phead">
+      <button class="iconbtn" data-close="panelSettings" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <h2>Réglages</h2>
+    </div>
+    <div class="pbody" id="settingsBody"></div>
+  </aside>
+
+  <div id="toast" role="status"></div>
+</div></div>
+
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════════════
+   SHORTS FR — feed vertical de Shorts YouTube 100% francophones
+   Single page, zéro dépendance. Tout l'état vit dans localStorage.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────── 0. UTILITAIRES ─────────────────────────── */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const pick  = arr => arr[(Math.random() * arr.length) | 0];
+const uniq  = arr => [...new Set(arr)];
+const esc   = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/** Fisher-Yates non destructif. */
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+/** Tirage pondéré : entries = [[valeur, poids], …] */
+function weighted(entries) {
+  const total = entries.reduce((s, e) => s + Math.max(0, e[1]), 0);
+  if (total <= 0) return entries.length ? entries[0][0] : null;
+  let r = Math.random() * total;
+  for (const [v, w] of entries) { r -= Math.max(0, w); if (r <= 0) return v; }
+  return entries[entries.length - 1][0];
+}
+/** Durée ISO-8601 (PT1M3S) → secondes. */
+function isoSeconds(iso) {
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?$/.exec(iso || '');
+  if (!m) return NaN;
+  return (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0);
+}
+const fmtDur = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+function fmtNum(n) {
+  n = +n || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace('.0', '') + ' Md';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + ' M';
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace('.0', '') + ' k';
+  return String(n);
+}
+function fmtAgo(iso) {
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (!isFinite(d)) return '';
+  if (d < 3600) return `il y a ${Math.max(1, Math.round(d / 60))} min`;
+  if (d < 86400) return `il y a ${Math.round(d / 3600)} h`;
+  if (d < 2592000) return `il y a ${Math.round(d / 86400)} j`;
+  if (d < 31536000) return `il y a ${Math.round(d / 2592000)} mois`;
+  return `il y a ${Math.round(d / 31536000)} an${d >= 63072000 ? 's' : ''}`;
+}
+
+/* ─────────────────────────── 1. STOCKAGE ─────────────────────────── */
+/**
+ * Toute la persistance passe ici. localStorage peut lever (navigation privée,
+ * site data bloqué) : chaque accès est protégé et l'app reste fonctionnelle
+ * en mémoire seule.
+ */
+const Store = (() => {
+  const P = 'sfr.';
+  const mem = new Map();
+  let ok = true;
+  try { localStorage.setItem(P + '_t', '1'); localStorage.removeItem(P + '_t'); }
+  catch { ok = false; }
+
+  function get(key, dflt) {
+    if (mem.has(key)) return mem.get(key);
+    let v = dflt;
+    if (ok) try { const raw = localStorage.getItem(P + key); if (raw != null) v = JSON.parse(raw); } catch {}
+    mem.set(key, v);
+    return v;
+  }
+  function set(key, val) {
+    mem.set(key, val);
+    if (!ok) return val;
+    try { localStorage.setItem(P + key, JSON.stringify(val)); }
+    catch { /* quota plein : on purge les caches lourds et on retente une fois */
+      try { localStorage.removeItem(P + 'vcache'); localStorage.removeItem(P + 'ccache'); mem.delete('vcache'); mem.delete('ccache');
+            localStorage.setItem(P + key, JSON.stringify(val)); } catch {}
+    }
+    return val;
+  }
+  const del = key => { mem.delete(key); if (ok) try { localStorage.removeItem(P + key); } catch {} };
+  function clearAll() {
+    mem.clear();
+    if (!ok) return;
+    try { Object.keys(localStorage).filter(k => k.startsWith(P)).forEach(k => localStorage.removeItem(k)); } catch {}
+  }
+  return { get, set, del, clearAll, available: ok };
+})();
+
+/* ─────────────────────────── 2. ÉTAT GLOBAL ─────────────────────────── */
+const DEFAULT_SETTINGS = {
+  strictness : 'balanced',   // strict | balanced | large
+  autoAdvance: true,
+  loopSingle : false,
+  sound      : false,
+  maxSeconds : 60,
+};
+
+const State = {
+  key       : Store.get('key', ''),
+  settings  : Object.assign({}, DEFAULT_SETTINGS, Store.get('settings', {})),
+  favorites : Store.get('favorites', {}),   // channelId → {title,thumb,uploads,addedAt,lastSeenAt,newCount}
+  liked     : Store.get('liked', {}),       // videoId  → {title,channelId,ts}
+  seen      : Store.get('seen', []),        // videoIds (FIFO, plafonné)
+  interests : Store.get('interests', { terms: {}, cats: {}, chans: {} }),
+  chanLang  : Store.get('chanLang', {}),    // channelId → {fr:n, other:n, verdict:'fr'|'other'|null}
+  pool      : Store.get('pool', {}),        // channelId → {uploads,score,lastPulled,title}
+  vcache    : Store.get('vcache', {}),      // videoId   → objet vidéo normalisé
+  ccache    : Store.get('ccache', {}),      // channelId → objet chaîne normalisé
+  usedSeeds : Store.get('usedSeeds', []),
+  stats     : Store.get('stats', { fetched: 0, keptFr: 0, rejectedLang: 0, rejectedDur: 0, rejectedOther: 0 }),
+};
+const seenSet = new Set(State.seen);
+
+const save = {
+  settings : () => Store.set('settings',  State.settings),
+  favorites: () => Store.set('favorites', State.favorites),
+  liked    : () => Store.set('liked',     State.liked),
+  interests: () => Store.set('interests', State.interests),
+  chanLang : () => Store.set('chanLang',  State.chanLang),
+  pool     : () => Store.set('pool',      trimPool()),
+  stats    : () => Store.set('stats',     State.stats),
+  seen     : () => { if (State.seen.length > 4000) State.seen = State.seen.slice(-3000); Store.set('seen', State.seen); },
+  vcache   : () => Store.set('vcache',    trimCache('vcache', 900)),
+  ccache   : () => Store.set('ccache',    trimCache('ccache', 400)),
+};
+function markSeen(id) { if (seenSet.has(id)) return; seenSet.add(id); State.seen.push(id); save.seen(); }
+/** Garde les N entrées de cache les plus récemment touchées. */
+function trimCache(which, max) {
+  const c = State[which], ks = Object.keys(c);
+  if (ks.length <= max) return c;
+  ks.sort((a, b) => (c[a]._t || 0) - (c[b]._t || 0)).slice(0, ks.length - max).forEach(k => delete c[k]);
+  return c;
+}
+/** Le pool de chaînes découvertes ne garde que les 300 meilleures. */
+function trimPool() {
+  const ks = Object.keys(State.pool);
+  if (ks.length <= 300) return State.pool;
+  ks.sort((a, b) => (State.pool[b].score || 0) - (State.pool[a].score || 0)).slice(300)
+    .forEach(k => delete State.pool[k]);
+  return State.pool;
+}
+
+/* ─────────────────────────── 3. QUOTA ─────────────────────────── */
+/**
+ * Le quota YouTube (10 000 u/jour par défaut) se réinitialise à minuit
+ * heure du Pacifique. On suit la dépense localement pour pouvoir préférer
+ * les sources bon marché quand la réserve baisse.
+ *   search.list = 100 u   |   videos/channels/playlistItems.list = 1 u
+ */
+const Quota = (() => {
+  const LIMIT = 10000;
+  const day = () => new Date(Date.now() - 8 * 3600e3).toISOString().slice(0, 10); // ~PT
+  let st = Store.get('quota', { day: day(), used: 0, calls: 0 });
+  if (st.day !== day()) st = { day: day(), used: 0, calls: 0 };
+
+  const flush = () => Store.set('quota', st);
+  return {
+    get used()  { return st.used; },
+    get calls() { return st.calls; },
+    limit: LIMIT,
+    get left()  { return Math.max(0, LIMIT - st.used); },
+    /** Reste-t-il de quoi payer `cost` unités ? */
+    can(cost)   { return st.used + cost <= LIMIT; },
+    spend(cost) { if (st.day !== day()) st = { day: day(), used: 0, calls: 0 }; st.used += cost; st.calls++; flush(); },
+    /** Appelé quand l'API répond 403 quotaExceeded : on cale le compteur. */
+    exhaust()   { st.used = LIMIT; flush(); },
+    reset()     { st = { day: day(), used: 0, calls: 0 }; flush(); },
+  };
+})();
+
+/* ─────────────────────────── 4. API YOUTUBE ─────────────────────────── */
+const COST = { search: 100, videos: 1, channels: 1, playlistItems: 1, videoCategories: 1 };
+
+class ApiError extends Error {
+  constructor(reason, message, status) { super(message); this.reason = reason; this.status = status; }
+}
+
+const Api = (() => {
+  const BASE = 'https://www.googleapis.com/youtube/v3/';
+
+  async function call(endpoint, params) {
+    if (!State.key) throw new ApiError('noKey', 'Clé API absente');
+    const cost = COST[endpoint] ?? 1;
+    if (!Quota.can(cost)) throw new ApiError('quotaExceeded', 'Quota local épuisé');
+
+    const qs = new URLSearchParams({ key: State.key });
+    for (const [k, v] of Object.entries(params)) if (v != null && v !== '') qs.set(k, v);
+
+    Quota.spend(cost);
+    let res;
+    try { res = await fetch(BASE + endpoint + '?' + qs, { referrerPolicy: 'strict-origin-when-cross-origin' }); }
+    catch { throw new ApiError('network', 'Pas de connexion à googleapis.com'); }
+
+    if (!res.ok) {
+      let reason = 'http', msg = `Erreur HTTP ${res.status}`;
+      try {
+        const j = await res.json();
+        reason = j?.error?.errors?.[0]?.reason || reason;
+        msg = j?.error?.message || msg;
+      } catch {}
+      if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') Quota.exhaust();
+      throw new ApiError(reason, msg, res.status);
+    }
+    return res.json();
+  }
+
+  /* — recherche : la seule source coûteuse (100 u) — */
+  const search = o => call('search', {
+    part: 'snippet', type: 'video', maxResults: 50,
+    relevanceLanguage: 'fr', regionCode: 'FR',
+    videoDuration: 'short', videoEmbeddable: 'true', videoSyndicated: 'true',
+    safeSearch: 'moderate', ...o,
+  });
+
+  const videos = (ids, part = 'snippet,contentDetails,statistics,status') =>
+    call('videos', { part, id: ids.slice(0, 50).join(',') });
+
+  const chart = o => call('videos', {
+    part: 'snippet,contentDetails,statistics,status',
+    chart: 'mostPopular', regionCode: 'FR', maxResults: 50, ...o,
+  });
+
+  const channels = ids => call('channels', {
+    part: 'snippet,contentDetails,statistics,brandingSettings',
+    id: ids.slice(0, 50).join(','), maxResults: 50,
+  });
+
+  const playlistItems = (playlistId, pageToken) => call('playlistItems', {
+    part: 'contentDetails', playlistId, maxResults: 50, pageToken,
+  });
+
+  return { call, search, videos, chart, channels, playlistItems };
+})();
+
+/** UCxxxx → UUxxxx : la playlist « toutes les vidéos » d'une chaîne. */
+const uploadsOf = channelId => channelId && channelId.startsWith('UC') ? 'UU' + channelId.slice(2) : null;
+
+/* ══════════════════════════════════════════════════════════════════════
+   5. DÉTECTION DE LANGUE
+   YouTube ne *garantit* rien : `relevanceLanguage=fr` n'est qu'un indice
+   de pertinence, et `defaultAudioLanguage` est souvent absent (le champ
+   est facultatif côté créateur). On empile donc 5 couches :
+
+     L0  requête biaisée   → seeds en français + relevanceLanguage/regionCode
+     L1  métadonnées dures → snippet.defaultAudioLanguage / defaultLanguage
+     L2  signal chaîne     → country, brandingSettings.defaultLanguage, mémoire locale
+     L3  détecteur natif   → LanguageDetector API (Chrome/Edge, on-device)
+     L4  heuristique texte → scoring multi-langue sur titre+description+tags
+
+   Une vidéo n'entre dans le feed que si le verdict combiné dépasse le
+   seuil de sévérité choisi par l'utilisateur.
+   ══════════════════════════════════════════════════════════════════════ */
+const Lang = (() => {
+
+  /* --- Écritures non latines : rejet immédiat (cyrillique, arabe, CJK…) --- */
+  const SCRIPTS = [
+    [/[Ѐ-ӿ]/g, 'ru'], [/[؀-ۿݐ-ݿ]/g, 'ar'],
+    [/[一-鿿㐀-䶿]/g, 'zh'], [/[぀-ヿ]/g, 'ja'],
+    [/[가-힯ᄀ-ᇿ]/g, 'ko'], [/[ऀ-ॿ]/g, 'hi'],
+    [/[฀-๿]/g, 'th'], [/[֐-׿]/g, 'he'],
+    [/[Ͱ-Ͽἀ-῿]/g, 'el'], [/[Ⴀ-ჿ]/g, 'ka'],
+    [/[԰-֏]/g, 'hy'], [/[ঀ-৿]/g, 'bn'],
+    [/[஀-௿]/g, 'ta'], [/[ሀ-፿]/g, 'am'],
+  ];
+
+  /* --- Mots-fonction *distinctifs* par langue -------------------------
+     Règle de construction : on écarte tout mot partagé avec le français
+     (« que », « mais », « comme », « no/non », « sono »…) pour ne jamais
+     pénaliser une vidéo française à tort, et inversement. Sont ainsi
+     volontairement absents du lexique FR : de, que, un, tu, il, ma, qui, y —
+     tous massivement partagés avec l'espagnol, l'italien ou le portugais.
+     Un mot qui apparaîtrait dans deux listes est retiré des deux (cf. LEX). */
+  const WORDS = {
+    fr: `le les des une aux dans avec pour sur est sont était étaient être suis fait faire fais vais vas
+         en et au ce cet se toi moi dont quel quelle plutôt franchement carrément vachement hein
+         je la du on pas ça à faut
+         monde temps fois gens chose choses façon vie eau tête coeur cœur pieds yeux main mains
+         argent travail maison ville pays enfant enfants femme homme ami amis voiture meilleur meilleure
+         gratuit truc trucs ouais
+         veux veut peux peut dois doit sais sait très aussi tout tous toute toutes plus moins encore déjà
+         jamais toujours beaucoup vraiment comment pourquoi parce alors donc mais où quoi celui celle ceux
+         cette ces mon ton son mes tes ses nos vos leur leurs notre votre chez depuis pendant avant après
+         sans sous entre vers jusqu quand nous vous elle elles ils lui rien personne quelque quelques
+         chaque autre autres même mieux petit petite grand grande nouveau nouvelle vieux jour jours
+         année années aujourd hui hier demain maintenant ici voilà voici merci bonjour salut ouais mec
+         gars truc genre trop bien bon bonne mal peu assez presque enfin ensuite surtout pourtant cependant
+         néanmoins ainsi lorsque tandis afin car ni oui non si prends prend mettre met dit dire dis vu
+         voir vois savoir connais eu avez avons ont avait avais serait pourrait faudrait devrait`,
+    es: `el los las del al con para por pero muy también porque cómo qué está están ser hacer tiene tienen
+         todos años hola gracias ahora siempre nunca mucho mejor así aquí esto esta ese esa nosotros ustedes
+         español dónde cuándo quién cuál algo nada alguien mismo otro otra bueno buena grande pequeño
+         este truco abuela cocinar forma cambiar
+         hoy ayer mañana entonces sólo solo puede puedo quiero vamos voy hice hizo era eran fue fueron
+         desde hasta sobre entre sin bajo tras según entonces pues vale chicos gente cosas`,
+    en: `the and you your this that with have from they what when how about would there their been will
+         just like dont cant its were our who which because some more very much really want need make
+         made going know think said see get got take give best new most people thing things time way
+         after before while over under between into through should could every other than then them
+         subscribe channel video watch guys`,
+    pt: `não você uma dos das então tudo obrigado gente pra vamos fazer coisa hoje ele ela eles elas
+         são está estão foi foram tem têm muito também aqui agora sempre nunca melhor pior grande pequeno
+         dele dela deles meu minha seu sua nosso nossa isso isto esse essa aquele aquela quem qual onde
+         quando porque pois já ainda depois antes sobre entre sem até desde galera cara mano`,
+    it: `il miglior migliore sotto sopra possibile ecco davvero magari proprio
+         che non per sono questo questa questi queste molto anche perché tutto tutti fare essere della
+         delle degli nel nella sul sulla gli ciao grazie adesso quindi però cosa mio mia suo sua nostro
+         vostro loro dove quando chi quale qualcosa niente nessuno stesso altro buono grande piccolo
+         oggi ieri domani allora solo può posso voglio andiamo vado era erano fatto detto visto sempre mai`,
+    de: `der die das und nicht ich ist ein eine mit auf für aber auch wenn dass sich sie wir haben sein
+         sehr immer schon mal nein danke oder aus bei nach von zu dem den des wie was wer wo warum
+         weil dann noch nur kann muss will soll wird werden hat hatte war waren machen gemacht gut
+         viele mehr alle jeder andere hier heute morgen gestern jetzt`,
+    nl: `het een van niet ook maar zijn hebben ik je we deze veel goed wat wie waar waarom omdat dan
+         nog alleen kan moet wil zal wordt heeft had was waren maken gemaakt hier vandaag nu altijd
+         nooit beter groot klein mijn jouw onze hun dit die dat naar bij uit over onder tussen zonder`,
+    tr: `bir ve bu için çok ama değil var yok ben sen biz siz onlar nasıl neden nerede kim hangi
+         şey daha iyi kötü büyük küçük bugün dün yarın şimdi her zaman hiç sonra önce ile gibi
+         kadar yapmak olmak geldi gitti oldu yani tamam merhaba teşekkür`,
+    id: `yang dan tidak ini itu saya kamu untuk dengan ada bisa akan sudah belum juga dari pada
+         dalam oleh atau tapi karena bagaimana mengapa dimana siapa apa banyak sangat lebih paling
+         baik buruk besar kecil hari sekarang selalu pernah setelah sebelum kita mereka dia`,
+    pl: `nie jest się ale tak jak tego bardzo żeby czy który która które ten ta to jestem jesteś
+         mamy mam masz było były będzie można trzeba tylko już jeszcze bardzo dobrze źle duży mały
+         dzisiaj teraz zawsze nigdy potem przed przez dla oraz albo bo więc no tutaj`,
+    vi: `không của và là được người một có những cho với trong này đó tôi bạn chúng nhiều rất
+         hơn nhất tốt xấu lớn nhỏ hôm nay bây giờ luôn bao giờ sau trước vì sao thế nào ở đâu ai gì`,
+    ro: `sunt nu și pentru dar foarte care cine unde când cum acest această aceste
+         mult puțin bine rău mare mic astăzi acum mereu niciodată după înainte prin despre fără`,
+  };
+
+  /* Pré-compilation : Map<mot, langue>. Un mot présent dans 2 listes est
+     retiré des deux (sécurité si les listes évoluent). */
+  const LEX = new Map();
+  const dupes = new Set();
+  for (const [lg, blob] of Object.entries(WORDS)) {
+    for (const w of blob.split(/\s+/).filter(Boolean)) {
+      if (LEX.has(w) && LEX.get(w) !== lg) dupes.add(w); else LEX.set(w, lg);
+    }
+  }
+  dupes.forEach(w => LEX.delete(w));
+
+  const LANGS = Object.keys(WORDS);
+
+  /* --- Signaux orthographiques ----------------------------------------- */
+  /* é et è sont écartés : partagés avec l'italien, l'espagnol, le portugais.
+     â/ê/ô/î/û restent français *et* portugais/vietnamiens — d'où les listes
+     concurrentes ci-dessous, restreintes à ce qui est réellement exclusif. */
+  const RE_FR_CHARS   = /[àâôùœ]/gi;                // français-penchant, poids faible
+  const RE_FR_STRONG  = /[çœêîûëï]/gi;              // quasi exclusif au français
+  const RE_FR_ELISION = /\b(?:[cdjlmnst]|qu|jusqu|lorsqu|puisqu|quelqu)['’]/gi;
+  const RE_ES_CHARS   = /[ñ¿¡]/g;
+  const RE_PT_CHARS   = /[ãõ]/gi;
+  const RE_IT_CHARS   = /[òì]/gi;
+  const RE_DE_CHARS   = /[äöüß]/gi;
+  const RE_TR_CHARS   = /[ğışİ]/gi;
+  const RE_PL_CHARS   = /[ąćęłńśźż]/gi;
+  const RE_RO_CHARS   = /[ășț]/gi;                  // â/î sont aussi français
+  const RE_VI_CHARS   = /[đơư]|[\u1EA0-\u1EF9]/gi; // voyelles à ton vietnamiennes
+
+  const TOKEN_RE = /[a-zà-öø-ÿœ'’-]+/gi;
+
+  /** Comptage de caractères d'un script non latin, en ratio. */
+  function scriptRatio(text) {
+    const letters = (text.match(/\p{L}/gu) || []).length || 1;
+    let best = null, bestRatio = 0;
+    for (const [re, lg] of SCRIPTS) {
+      const n = (text.match(re) || []).length;
+      const r = n / letters;
+      if (r > bestRatio) { bestRatio = r; best = lg; }
+    }
+    return { lang: best, ratio: bestRatio };
+  }
+
+  /**
+   * Heuristique L4. Renvoie { lang, score, margin, tokens, runnerUp }.
+   *  - score  : densité de mots-fonction de la langue gagnante (0→1)
+   *  - margin : score gagnant / score du dauphin (≥1)
+   */
+  function heuristic(text) {
+    const t = String(text || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ').replace(/[#@]\w+/g, ' ');
+    const tokens = t.match(TOKEN_RE) || [];
+    const n = tokens.length;
+    const hits  = Object.fromEntries(LANGS.map(l => [l, 0]));
+    const words = Object.fromEntries(LANGS.map(l => [l, 0]));
+
+    for (const tok of tokens) {
+      let lg = LEX.get(tok);
+      if (!lg && /['’]/.test(tok)) {
+        /* « c'est », « l'année », « qu'il » : le radical porte l'information */
+        const parts = tok.split(/['’]/).filter(x => x.length > 1);
+        for (const part of parts) { lg = LEX.get(part); if (lg) break; }
+      }
+      if (lg) { hits[lg] += 1; words[lg] += 1; }
+    }
+
+    /* Bonus orthographiques, pondérés pour rester comparables aux mots. */
+    const cnt = re => (t.match(re) || []).length;
+    hits.fr += cnt(RE_FR_ELISION) * 1.3 + cnt(RE_FR_STRONG) * 1.1 + Math.min(4, cnt(RE_FR_CHARS)) * 0.3;
+    hits.es += cnt(RE_ES_CHARS) * 2.2;
+    hits.pt += cnt(RE_PT_CHARS) * 2.2;
+    hits.it += cnt(RE_IT_CHARS) * 1.5;
+    hits.de += cnt(RE_DE_CHARS) * 1.8;
+    hits.tr += cnt(RE_TR_CHARS) * 1.8;
+    hits.pl += cnt(RE_PL_CHARS) * 2.0;
+    hits.ro += cnt(RE_RO_CHARS) * 1.2;
+    hits.vi += cnt(RE_VI_CHARS) * 1.0;
+
+    const ranked = LANGS.map(l => [l, hits[l] / Math.max(6, n)]).sort((a, b) => b[1] - a[1]);
+    const [top, second] = ranked;
+    return {
+      lang    : top[1] > 0 ? top[0] : null,
+      score   : top[1],
+      /* Nombre de mots-fonction réellement reconnus pour la langue gagnante.
+         Un verdict ne doit jamais reposer sur les seuls accents : « è » suffit
+         sinon à faire passer un titre italien pour du français. */
+      words   : top[1] > 0 ? words[top[0]] : 0,
+      runnerUp: second ? second[0] : null,
+      margin  : second && second[1] > 0 ? top[1] / second[1] : (top[1] > 0 ? 99 : 0),
+      tokens  : n,
+    };
+  }
+
+  /* --- L3 : LanguageDetector natif (Chrome 138+/Edge, on-device) -------- */
+  let detector = null, detectorState = 'unknown';
+  async function initDetector() {
+    try {
+      const LD = self.LanguageDetector;
+      if (!LD) { detectorState = 'absent'; return; }
+      const av = await LD.availability?.({ expectedInputLanguages: ['fr', 'en', 'es', 'pt', 'it', 'de'] });
+      if (av !== 'available') { detectorState = av || 'unavailable'; return; }   // pas de téléchargement forcé
+      detector = await LD.create({ expectedInputLanguages: ['fr', 'en', 'es', 'pt', 'it', 'de'] });
+      detectorState = 'ready';
+    } catch { detectorState = 'error'; }
+  }
+  async function nativeDetect(text) {
+    if (!detector || !text || text.length < 12) return null;
+    try {
+      const r = await detector.detect(text);
+      if (!Array.isArray(r) || !r.length) return null;
+      const fr = r.find(x => x.detectedLanguage?.startsWith('fr'));
+      return { top: r[0].detectedLanguage, topConf: r[0].confidence, frConf: fr ? fr.confidence : 0 };
+    } catch { return null; }
+  }
+
+  /* --- Mémoire par chaîne (L2 apprise) -------------------------------- */
+  function channelVerdict(channelId) {
+    const c = State.chanLang[channelId];
+    return c?.verdict || null;
+  }
+  function learn(channelId, isFrench, hard) {
+    if (!channelId) return;
+    const c = State.chanLang[channelId] || { fr: 0, other: 0, verdict: null };
+    if (isFrench) c.fr += hard ? 2 : 1; else c.other += hard ? 2 : 1;
+    if (c.verdict !== 'other') {                       // un rejet manuel est définitif
+      if (c.fr >= 3 && c.fr > c.other * 2) c.verdict = 'fr';
+      else if (c.other >= 3 && c.other > c.fr * 2) c.verdict = 'other';
+    }
+    State.chanLang[channelId] = c;
+    save.chanLang();
+  }
+  function blacklist(channelId) {
+    const c = State.chanLang[channelId] || { fr: 0, other: 0, verdict: null };
+    c.verdict = 'other'; c.other += 10;
+    State.chanLang[channelId] = c;
+    save.chanLang();
+  }
+  function whitelist(channelId) {
+    const c = State.chanLang[channelId] || { fr: 0, other: 0, verdict: null };
+    c.verdict = 'fr'; c.fr += 10;
+    State.chanLang[channelId] = c;
+    save.chanLang();
+  }
+
+  /* Pays majoritairement francophones (snippet.country de la chaîne). */
+  const FR_COUNTRIES = { FR: 1.0, BE: .72, CH: .62, CA: .5, LU: .8, MC: .95, SN: .8, CI: .82,
+                         CM: .7, ML: .8, BF: .8, NE: .8, TG: .8, BJ: .8, GA: .85, CG: .8,
+                         CD: .72, MG: .6, HT: .7, MA: .45, TN: .45, DZ: .42, RE: .95, GP: .95,
+                         MQ: .95, GF: .95, NC: .9, PF: .9, VU: .5, DJ: .6, RW: .35, BI: .5, MU: .5 };
+
+  const THRESHOLD = { strict: 0.86, balanced: 0.62, large: 0.44 };
+
+  /**
+   * Verdict combiné pour une vidéo.
+   * @returns {{fr:boolean, conf:number, reason:string, detected:string|null, hard:boolean}}
+   */
+  async function verdict(video, channel) {
+    const text = [video.title, video.description?.slice(0, 400), (video.tags || []).slice(0, 15).join(' ')]
+      .filter(Boolean).join('\n');
+
+    /* — Rejets durs — */
+    const sc = scriptRatio(text);
+    if (sc.ratio > 0.12) return { fr: false, conf: 0, reason: `écriture ${sc.lang}`, detected: sc.lang, hard: true };
+
+    const cv = channelVerdict(video.channelId);
+    if (cv === 'other') return { fr: false, conf: 0, reason: 'chaîne écartée', detected: null, hard: true };
+
+    const dal = (video.audioLang || '').toLowerCase();
+    const dl  = (video.metaLang  || '').toLowerCase();
+    if (dal && !dal.startsWith('fr')) {
+      /* Exception : « zxx » = pas de parole, on laisse le texte décider. */
+      if (dal !== 'zxx') return { fr: false, conf: 0, reason: `audio ${dal}`, detected: dal.slice(0, 2), hard: true };
+    }
+    if (!dal && dl && !dl.startsWith('fr'))
+      return { fr: false, conf: 0, reason: `métadonnées ${dl}`, detected: dl.slice(0, 2), hard: true };
+
+    /* — Accumulation de preuves — */
+    const h = heuristic(text);
+    const hFr    = h.lang === 'fr' && h.margin >= 1.2 && h.words >= 1;
+    const hOther = h.lang && h.lang !== 'fr' && h.score > 0.05 && h.margin >= 1.35 && h.words >= 1;
+
+    if (dal.startsWith('fr')) return { fr: true, conf: .99, reason: 'audio FR déclaré', detected: 'fr', hard: true };
+    if (dl.startsWith('fr') && !hOther) return { fr: true, conf: .92, reason: 'métadonnées FR', detected: 'fr', hard: true };
+    if (cv === 'fr' && !hOther) return { fr: true, conf: .9, reason: 'chaîne vérifiée FR', detected: 'fr', hard: false };
+
+    /* Détecteur natif : verdict fort quand il est disponible. */
+    const nd = await nativeDetect(text);
+    if (nd) {
+      if (nd.frConf >= .55) return { fr: true, conf: Math.min(.95, .6 + nd.frConf * .35), reason: 'détecteur natif', detected: 'fr', hard: false };
+      if (nd.topConf >= .7 && !nd.top.startsWith('fr') && nd.frConf < .12)
+        return { fr: false, conf: 0, reason: `détecteur natif : ${nd.top}`, detected: nd.top.slice(0, 2), hard: true };
+    }
+
+    if (hOther) return { fr: false, conf: 0, reason: `texte ${h.lang}`, detected: h.lang, hard: false };
+
+    /* Signal chaîne (pays) + heuristique faible. */
+    const country = channel?.country;
+    const cw = country ? (FR_COUNTRIES[country] || 0) : 0;
+    let conf = 0, reason = 'indéterminé';
+
+    if (hFr) {
+      conf = clamp(.5 + Math.min(.3, h.score * 2.2) + Math.min(.12, (h.margin - 1.2) * .06), .5, .84);
+      reason = 'texte français';
+    }
+    if (cw > 0) {
+      const bump = cw * .3;
+      if (conf > 0) { conf = clamp(conf + bump * .5, 0, .88); reason += ` + chaîne ${country}`; }
+      else if (cw >= .6 && h.tokens < 8) { conf = clamp(.42 + bump, 0, .7); reason = `chaîne ${country}`; }
+      else if (cw >= .6) { conf = clamp(.4 + bump, 0, .68); reason = `chaîne ${country}`; }
+    }
+    if ((channel?.chanLang || '').toLowerCase().startsWith('fr')) {
+      conf = clamp(conf + .18, 0, .9);
+      reason = conf > .5 ? reason + ' + langue de chaîne FR' : 'langue de chaîne FR';
+    }
+
+    const need = THRESHOLD[State.settings.strictness] ?? THRESHOLD.balanced;
+    return { fr: conf >= need, conf, reason, detected: hFr ? 'fr' : null, hard: false };
+  }
+
+  return { verdict, heuristic, learn, blacklist, whitelist, channelVerdict, initDetector,
+           get detectorState() { return detectorState; }, FR_COUNTRIES, THRESHOLD };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+   6. NORMALISATION + FILTRE DE JOUABILITÉ
+   ══════════════════════════════════════════════════════════════════════ */
+function normVideo(it) {
+  const s = it.snippet || {}, cd = it.contentDetails || {}, st = it.statistics || {}, sta = it.status || {};
+  const th = s.thumbnails || {};
+  return {
+    id: it.id, title: s.title || '', description: s.description || '',
+    channelId: s.channelId, channelTitle: s.channelTitle || '',
+    publishedAt: s.publishedAt, tags: s.tags || [], categoryId: s.categoryId,
+    audioLang: s.defaultAudioLanguage || '', metaLang: s.defaultLanguage || '',
+    thumb: (th.maxres || th.standard || th.high || th.medium || th.default || {}).url || '',
+    duration: isoSeconds(cd.duration),
+    region: cd.regionRestriction || null,
+    views: +st.viewCount || 0, likes: +st.likeCount || 0,
+    embeddable: sta.embeddable !== false, privacy: sta.privacyStatus, upload: sta.uploadStatus,
+    kids: !!sta.madeForKids,
+    _t: Date.now(),
+  };
+}
+function normChannel(it) {
+  const s = it.snippet || {}, cd = it.contentDetails || {}, st = it.statistics || {}, bs = it.brandingSettings || {};
+  const th = s.thumbnails || {};
+  return {
+    id: it.id, title: s.title || '', country: s.country || '',
+    thumb: (th.medium || th.default || th.high || {}).url || '',
+    chanLang: bs.channel?.defaultLanguage || '',
+    keywords: bs.channel?.keywords || '',
+    uploads: cd.relatedPlaylists?.uploads || uploadsOf(it.id),
+    subs: +st.subscriberCount || 0, videoCount: +st.videoCount || 0,
+    _t: Date.now(),
+  };
+}
+
+/** Contrôles techniques : embarquable, public, non bloqué en France, durée. */
+function playable(v) {
+  if (!v.embeddable) return 'non embarquable';
+  if (v.privacy && v.privacy !== 'public') return 'non public';
+  if (v.upload && v.upload !== 'processed') return 'non traité';
+  const r = v.region;
+  if (r?.blocked?.includes('FR')) return 'bloqué en FR';
+  if (r?.allowed && !r.allowed.includes('FR')) return 'indispo en FR';
+  if (!isFinite(v.duration) || v.duration < 3) return 'durée inconnue';
+  if (v.duration > State.settings.maxSeconds) return `${Math.round(v.duration)}s`;
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   7. MOTEUR DE DÉCOUVERTE
+   Coût API : search = 100 u, tout le reste = 1 u. Le feed doit donc
+   surtout tourner sur des sources à 1 u. Stratégie :
+
+     · `search` sert à *découvrir des chaînes* (pas juste des vidéos) ;
+       chaque chaîne trouvée entre dans un pool persistant.
+     · les recharges suivantes puisent dans le pool via la playlist
+       « uploads » de chaque chaîne (1 u pour 50 vidéos) — 100× moins cher.
+     · le classement mostPopular FR (1 u) apporte de la nouveauté.
+     · les abonnements alimentent l'onglet dédié et s'injectent dans « Pour toi ».
+
+   Exploration / exploitation : ε-greedy piloté par le modèle d'intérêts.
+   ══════════════════════════════════════════════════════════════════════ */
+const SEEDS = `recette rapide|astuce cuisine|pâtisserie facile|recette gâteau|street food france|
+humour français|sketch drôle|blague courte|stand up france|parodie française|
+musique française|rap français|chanson française|reprise guitare|piano tuto|
+actu france|décryptage politique|économie expliquée|histoire de france|anecdote historique|
+science expliquée|expérience physique|chimie amusante|espace astronomie|maths astuce|
+bricolage maison|rénovation appartement|déco intérieur|jardinage conseils|potager bio|
+animaux mignons|chat drôle|chien dressage|cheval équitation|aquarium poisson|
+maquillage tuto|coiffure tuto|mode look|soin peau routine|ongles nail art|
+fitness exercice|musculation conseil|yoga débutant|étirement souplesse|perte de poids conseil|
+foot ligue 1|basket france|rugby france|tennis technique|cyclisme vélo|
+voyage france|paris insolite|marseille|lyon|bretagne|corse|alpes randonnée|
+jeux vidéo test|minecraft astuce|fortnite|jeu de société|échecs stratégie|
+tech smartphone|intelligence artificielle|programmation astuce|excel astuce|photo astuce|
+argent économie|bourse investir|immobilier conseil|impôts fiscalité|budget conseil|
+orthographe astuce|expression française|apprendre l'anglais|langue française|vocabulaire|
+philosophie idée|psychologie conseil|développement personnel|motivation citation|méditation|
+médecine santé|nutrition conseil|sommeil astuce|premiers secours|dentiste conseil|
+moto essai|voiture essai|mécanique auto|avion aviation|train sncf|
+magie tour|illusion incroyable|énigme mystère|fait insolite|le saviez-vous|
+dessin tuto|peinture technique|poterie céramique|couture débutant|tricot crochet|
+cinéma critique|série avis|livre lecture|manga anime|cosplay|
+métier reconversion|entretien embauche|startup entreprise|droit avocat|permis de conduire|
+école lycée|études université|révisions bac|concours|orientation|
+danse chorégraphie|théâtre impro|chant technique|batterie rythme|beatmaking|
+zéro déchet|diy récup|rangement astuce|ménage astuce|lessive linge|
+belgique humour|québec expression|suisse romande|afrique francophone|antilles|
+vin dégustation|fromage français|bière artisanale|café barista|cocktail|
+pêche technique|chasse nature|escalade bloc|surf vague|ski neige|skate trick|
+boxe technique|judo karaté|self défense|course à pied|natation technique`
+  .split('|').map(s => s.trim()).filter(Boolean);
+
+const CATEGORIES = ['1','2','10','15','17','20','22','23','24','25','26','27','28'];
+const CAT_NAMES = { '1':'Cinéma','2':'Auto','10':'Musique','15':'Animaux','17':'Sport','20':'Gaming',
+  '22':'Vlog','23':'Humour','24':'Divertissement','25':'Actu','26':'Tuto','27':'Éducation','28':'Science' };
+
+const Discovery = (() => {
+  const MODIFIERS = ['', ' #shorts', ' shorts', ' en 1 minute', ' astuce', ' rapide'];
+  const ORDERS    = ['relevance', 'date', 'viewCount', 'rating'];
+  const WINDOWS   = [7, 30, 90, 365, 0];      // jours ; 0 = pas de borne
+
+  let searchesSinceReset = 0;
+
+  /* ---------- Modèle d'intérêts ---------- */
+  function reinforce(video, weight) {
+    const I = State.interests;
+    if (video.categoryId) I.cats[video.categoryId] = (I.cats[video.categoryId] || 0) + weight;
+    if (video.channelId)  I.chans[video.channelId] = (I.chans[video.channelId] || 0) + weight;
+    const terms = uniq([
+      ...(video.tags || []).slice(0, 8).map(t => t.toLowerCase()),
+      ...String(video.title).toLowerCase().match(/[a-zà-ÿœ']{4,}/g) || [],
+    ]).filter(t => t.length >= 4 && t.length <= 28);
+    for (const t of terms.slice(0, 12)) I.terms[t] = (I.terms[t] || 0) + weight * .5;
+    /* décroissance + élagage */
+    for (const k of Object.keys(I.terms)) { I.terms[k] *= .995; if (I.terms[k] < .08) delete I.terms[k]; }
+    save.interests();
+  }
+  const topTerms = n => Object.entries(State.interests.terms).sort((a, b) => b[1] - a[1]).slice(0, n).map(e => e[0]);
+  const topCats  = n => Object.entries(State.interests.cats).sort((a, b) => b[1] - a[1]).slice(0, n).map(e => e[0]);
+
+  /* ---------- Fabrication d'une requête ---------- */
+  function buildQuery() {
+    const terms = topTerms(14);
+    const exploit = terms.length >= 3 && Math.random() < .55;
+    let q;
+    if (exploit) {
+      const a = pick(terms);
+      q = Math.random() < .35 ? `${a} ${pick(SEEDS)}` : a;
+    } else {
+      const unused = SEEDS.filter(s => !State.usedSeeds.includes(s));
+      q = pick(unused.length > 12 ? unused : SEEDS);
+      State.usedSeeds.push(q);
+      if (State.usedSeeds.length > SEEDS.length - 10) State.usedSeeds = State.usedSeeds.slice(-40);
+      Store.set('usedSeeds', State.usedSeeds);
+    }
+    const days = pick(WINDOWS);
+    return {
+      q: q + pick(MODIFIERS),
+      order: pick(ORDERS),
+      publishedAfter: days ? new Date(Date.now() - days * 86400e3).toISOString() : null,
+      label: exploit ? 'intérêts' : 'exploration',
+    };
+  }
+
+  /* ---------- Hydratation : IDs → vidéos validées ---------- */
+  const inflight = new Set();
+  /** Vidéos écartées faute de preuve (et non pour preuve contraire). */
+  const softReject = new Set();
+  /** Vidéos déjà remises au feed pendant cette session. `seen` n'est marqué
+      qu'au visionnage : sans ce garde-fou, une recharge peut resservir les
+      mêmes vidéos et gaspiller des tours de boucle. */
+  const served = new Set();
+
+  async function hydrate(ids, sourceLabel) {
+    ids = uniq(ids).filter(id => id && !seenSet.has(id) && !inflight.has(id) &&
+                                 !softReject.has(id) && !served.has(id));
+    if (!ids.length) return [];
+    ids.forEach(id => inflight.add(id));
+    try {
+      /* 1. métadonnées vidéo (cache d'abord) */
+      const need = ids.filter(id => !State.vcache[id]);
+      for (let i = 0; i < need.length; i += 50) {
+        const batch = need.slice(i, i + 50);
+        let data;
+        try { data = await Api.videos(batch); } catch (e) { if (e.reason === 'quotaExceeded') throw e; continue; }
+        for (const it of data.items || []) State.vcache[it.id] = normVideo(it);
+      }
+      save.vcache();
+
+      const vids = ids.map(id => State.vcache[id]).filter(Boolean);
+      State.stats.fetched += vids.length;
+
+      /* 2. filtre technique (gratuit) avant tout appel chaîne */
+      const tech = [];
+      for (const v of vids) {
+        const bad = playable(v);
+        if (bad) { markSeen(v.id); if (/^\d+s$|durée/.test(bad)) State.stats.rejectedDur++; else State.stats.rejectedOther++; continue; }
+        if (Lang.channelVerdict(v.channelId) === 'other') { markSeen(v.id); State.stats.rejectedLang++; continue; }
+        tech.push(v);
+      }
+      if (!tech.length) { save.stats(); return []; }
+
+      /* 3. métadonnées chaîne (1 u / 50) — utile au verdict de langue */
+      const chanIds = uniq(tech.map(v => v.channelId)).filter(id => id && !State.ccache[id]);
+      for (let i = 0; i < chanIds.length; i += 50) {
+        try {
+          const data = await Api.channels(chanIds.slice(i, i + 50));
+          for (const it of data.items || []) State.ccache[it.id] = normChannel(it);
+        } catch (e) { if (e.reason === 'quotaExceeded') throw e; }
+      }
+      save.ccache();
+
+      /* 4. verdict de langue */
+      const out = [];
+      for (const v of tech) {
+        const ch = State.ccache[v.channelId];
+        const ver = await Lang.verdict(v, ch);
+        if (!ver.fr) {
+          State.stats.rejectedLang++;
+          /* Une preuve d'*autre* langue condamne la chaîne ; un simple manque
+             de preuve, non — sinon le mode « strict » finirait par écarter
+             des chaînes françaises qui remplissent mal leurs métadonnées. */
+          const provenOther = ver.hard || (ver.detected && ver.detected !== 'fr');
+          if (provenOther) { markSeen(v.id); Lang.learn(v.channelId, false, ver.hard); }
+          else softReject.add(v.id);   // réexaminé si la sévérité change
+          continue;
+        }
+        if (ver.hard || ver.conf >= .8) Lang.learn(v.channelId, true, ver.hard);
+        State.stats.keptFr++;
+        served.add(v.id);
+        out.push(Object.assign({}, v, { lang: ver, source: sourceLabel, channel: ch || null }));
+        /* toute chaîne validée entre dans le pool de découverte */
+        addToPool(v.channelId, ch, ver.conf);
+      }
+      save.stats(); save.pool();
+      return out;
+    } finally {
+      ids.forEach(id => inflight.delete(id));
+    }
+  }
+
+  function addToPool(channelId, ch, conf) {
+    if (!channelId) return;
+    const p = State.pool[channelId] || { uploads: uploadsOf(channelId), score: 0, lastPulled: 0, page: null, title: '' };
+    p.uploads = ch?.uploads || p.uploads || uploadsOf(channelId);
+    p.title = ch?.title || p.title;
+    p.score = (p.score || 0) + (conf || .5);
+    State.pool[channelId] = p;
+  }
+
+  /* ---------- Sources ---------- */
+
+  /** search.list — 100 u. Découvre vidéos *et* chaînes. */
+  async function fromSearch() {
+    const { q, order, publishedAfter, label } = buildQuery();
+    const data = await Api.search({ q, order, publishedAfter });
+    const ids = (data.items || []).map(i => i.id?.videoId).filter(Boolean);
+    /* les chaînes croisées entrent au pool même si leurs vidéos sont écartées */
+    for (const it of data.items || []) {
+      const cid = it.snippet?.channelId;
+      if (cid && !State.pool[cid]) addToPool(cid, null, .25);
+    }
+    searchesSinceReset++;
+    return hydrate(ids, `« ${q.trim()} »`);
+  }
+
+  /** playlistItems sur les uploads d'une chaîne du pool — 1 u. */
+  async function fromPool() {
+    const now = Date.now();
+    const cands = Object.entries(State.pool)
+      .filter(([id, p]) => p.uploads && Lang.channelVerdict(id) !== 'other' && now - (p.lastPulled || 0) > 90e3);
+    if (!cands.length) return [];
+    /* pondération : score de langue/appréciation × fraîcheur du dernier tirage */
+    const chosen = weighted(cands.map(([id, p]) => {
+      const rest = Math.min(3, (now - (p.lastPulled || 0)) / 6e5);
+      const fav  = State.favorites[id] ? 2 : 1;
+      const like = 1 + Math.min(3, (State.interests.chans[id] || 0));
+      return [id, (p.score || .3) * (1 + rest) * fav * like];
+    }));
+    const p = State.pool[chosen];
+    p.lastPulled = now;
+    let data;
+    try { data = await Api.playlistItems(p.uploads, p.page || undefined); }
+    catch (e) {
+      if (e.reason === 'quotaExceeded') throw e;
+      if (p.page) { p.page = null; } else { delete State.pool[chosen]; }  // playlist morte/privée
+      save.pool();
+      return [];
+    }
+    p.page = data.nextPageToken || null;      // prochaine fois : on descend le catalogue
+    save.pool();
+    const ids = (data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
+    return hydrate(ids, p.title ? `chaîne · ${p.title}` : 'chaîne suivie');
+  }
+
+  /** Classement mostPopular France — 1 u. Peu de Shorts mais 100% FR-région. */
+  async function fromChart() {
+    const cats = topCats(3);
+    const cat = Math.random() < .5 && cats.length ? pick(cats) : pick(CATEGORIES);
+    let data;
+    try { data = await Api.chart({ videoCategoryId: cat }); }
+    catch (e) { if (e.reason === 'quotaExceeded') throw e; return []; }
+    for (const it of data.items || []) if (!State.vcache[it.id]) State.vcache[it.id] = normVideo(it);
+    save.vcache();
+    const ids = (data.items || []).map(i => i.id);
+    return hydrate(ids, `tendances FR · ${CAT_NAMES[cat] || cat}`);
+  }
+
+  /** Uploads des chaînes favorites — 1 u chacune. */
+  async function fromFavorites(limit = 4) {
+    const favs = Object.entries(State.favorites)
+      .sort((a, b) => (a[1].lastPulled || 0) - (b[1].lastPulled || 0)).slice(0, limit);
+    const out = [];
+    for (const [id, f] of favs) {
+      const pl = f.uploads || uploadsOf(id);
+      if (!pl) continue;
+      f.lastPulled = Date.now();
+      let data;
+      try { data = await Api.playlistItems(pl); }
+      catch (e) { if (e.reason === 'quotaExceeded') throw e; continue; }
+      const ids = (data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
+      out.push(...await hydrate(ids, `abonnement · ${f.title}`));
+    }
+    save.favorites();
+    return out;
+  }
+
+  /**
+   * Choix de la source pour la prochaine recharge.
+   * `search` n'est déclenché que si nécessaire et si le quota le permet.
+   */
+  function chooseSource() {
+    const poolSize = Object.keys(State.pool).filter(id => State.pool[id].uploads).length;
+    const favCount = Object.keys(State.favorites).length;
+    const left = Quota.left;
+
+    /* Amorçage : sans pool, seule la recherche peut faire démarrer le feed. */
+    if (poolSize < 5) return left >= COST.search + 60 ? 'search' : 'chart';
+
+    const canSearch = left >= COST.search + 200;
+    return weighted([
+      ['search', canSearch ? (poolSize < 30 ? 3.5 : 1.2) : 0],
+      ['pool',   6 + Math.min(6, poolSize / 12)],
+      ['chart',  1.1],
+      ['favs',   favCount ? 1.6 : 0],
+    ]);
+  }
+
+  /** Recharge à vide : on marque une pause pour ne pas brûler le quota. */
+  let dryUntil = 0;
+  const resetBackoff = () => { dryUntil = 0; };
+
+  /**
+   * Récupère au moins `want` vidéos françaises jouables.
+   * Trois garde-fous, parce qu'une source peut se tarir (pool épuisé,
+   * requête sans résultat français) et qu'une boucle libre coûterait cher :
+   *   · budget dur d'une recherche + quelques appels à 1 u par recharge ;
+   *   · arrêt après 4 tours consécutifs sans résultat ;
+   *   · une seule recherche à 100 u par recharge.
+   */
+  async function collect(want = 6, onProgress) {
+    if (Date.now() < dryUntil) return [];
+    const got = [];
+    const tried = { search: 0, pool: 0, chart: 0, favs: 0 };
+    const startUsed = Quota.used;
+    const BUDGET = COST.search + 60;
+    let rounds = 0, dry = 0;
+
+    while (got.length < want && rounds < 14 && dry < 4 && Quota.used - startUsed < BUDGET) {
+      rounds++;
+      let src = chooseSource();
+      /* évite de matraquer une source stérile */
+      if (tried[src] >= (src === 'search' ? 1 : 5)) src = src === 'pool' ? 'chart' : 'pool';
+      tried[src]++;
+      let batch = [];
+      try {
+        if (src === 'search') batch = await fromSearch();
+        else if (src === 'pool') batch = await fromPool();
+        else if (src === 'chart') batch = await fromChart();
+        else batch = await fromFavorites(2);
+      } catch (e) {
+        if (e.reason === 'quotaExceeded' || e.reason === 'noKey' || e.reason === 'keyInvalid' ||
+            e.reason === 'network' || e.reason === 'badRequest' || e.reason === 'forbidden') throw e;
+        continue;
+      }
+      got.push(...batch);
+      if (batch.length) dry = 0; else dry++;
+      onProgress?.(got.length, src, rounds);
+    }
+    if (!got.length) dryUntil = Date.now() + 60e3;
+    return dedupe(got);
+  }
+
+  function dedupe(list) {
+    const seen = new Set(), out = [];
+    for (const v of list) if (!seen.has(v.id)) { seen.add(v.id); out.push(v); }
+    return out;
+  }
+
+  /** Mélange les sources pour que le feed n'enchaîne pas 20 vidéos d'une chaîne. */
+  function interleave(list) {
+    const byChan = new Map();
+    for (const v of shuffle(list)) {
+      if (!byChan.has(v.channelId)) byChan.set(v.channelId, []);
+      byChan.get(v.channelId).push(v);
+    }
+    const buckets = [...byChan.values()], out = [];
+    let alive = true;
+    for (let i = 0; alive; i++) {
+      alive = false;
+      for (const b of buckets) if (b[i]) { out.push(b[i]); alive = true; }
+    }
+    return out;
+  }
+
+  /** Appelé quand l'utilisateur change la sévérité du filtre. */
+  const requeueSoftRejects = () => softReject.clear();
+
+  /** Une chaîne écartée ne doit plus rien fournir, même déjà servi. */
+  const forgetChannel = cid => { for (const id of [...served]) if (State.vcache[id]?.channelId === cid) served.delete(id); };
+
+  return { collect, reinforce, interleave, hydrate, addToPool, topTerms, topCats,
+           requeueSoftRejects, forgetChannel, resetBackoff,
+           get searches() { return searchesSinceReset; },
+           get softRejects() { return softReject.size; } };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+   8. API IFRAME YOUTUBE
+   ══════════════════════════════════════════════════════════════════════ */
+const YTApi = (() => {
+  let ready = null;
+  function load() {
+    if (ready) return ready;
+    ready = new Promise((res, rej) => {
+      if (window.YT?.Player) return res(window.YT);
+      window.onYouTubeIframeAPIReady = () => res(window.YT);
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.async = true;
+      s.onerror = () => rej(new Error('iframe_api'));
+      document.head.appendChild(s);
+      setTimeout(() => { if (!window.YT?.Player) rej(new Error('timeout')); }, 15000);
+    });
+    return ready;
+  }
+  return { load };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+   9. ICÔNES
+   ══════════════════════════════════════════════════════════════════════ */
+const ICON = {
+  heart : `<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.7-7.5-10a4.3 4.3 0 0 1 7.5-2.8A4.3 4.3 0 0 1 19.5 10.5c0 5.3-7.5 10-7.5 10z"/></svg>`,
+  ban   : `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M6 18 18 6"/></svg>`,
+  sndOn : `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`,
+  sndOff: `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>`,
+  share : `<svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>`,
+  play  : `<svg viewBox="0 0 24 24"><path d="M7 4.5 20 12 7 19.5z"/></svg>`,
+  pause : `<svg viewBox="0 0 24 24"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>`,
+  next  : `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>`,
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   10. FEED
+   Une instance par onglet. Slides recyclées : au plus 3 lecteurs vivants
+   (précédent / actif / suivant), les autres sont détruits pour libérer
+   la mémoire et éviter les téléchargements inutiles.
+   ══════════════════════════════════════════════════════════════════════ */
+class Feed {
+  /**
+   * @param {string} elId          id du conteneur
+   * @param {Function} loader      () => Promise<video[]>  — recharge
+   * @param {object} opts          { name, refillAt }
+   */
+  constructor(elId, loader, opts = {}) {
+    this.root = $('#' + elId);
+    this.loader = loader;
+    this.name = opts.name || elId;
+    this.refillAt = opts.refillAt ?? 4;
+    this.items = [];
+    this.players = new Map();     // videoId → YT.Player
+    this.slides = new Map();      // videoId → element
+    this.active = -1;
+    this.loading = false;
+    this.exhausted = false;
+    this.raf = 0;
+    this.io = new IntersectionObserver(e => this.onIntersect(e), { root: this.root, threshold: [0, .55, .9] });
+    this.root.addEventListener('scroll', () => this.onScroll(), { passive: true });
+  }
+
+  /* ---------- cycle de vie ---------- */
+  async start() {
+    if (this.items.length) { this.resume(); return; }
+    await this.refill(true);
+  }
+  resume() {
+    this.root.hidden = false;
+    const v = this.items[this.active];
+    if (v) { this.ensurePlayers(); this.playActive(); }
+    this.tick();
+  }
+  suspend() {
+    cancelAnimationFrame(this.raf); this.raf = 0;
+    for (const p of this.players.values()) { try { p.pauseVideo(); } catch {} }
+    this.root.hidden = true;
+  }
+
+  /* ---------- chargement ---------- */
+  async refill(first = false) {
+    if (this.loading || this.exhausted) return;
+    this.loading = true;
+    if (first) UI.showState('loading', 'Recherche de Shorts français…', 'Découverte via l\'API YouTube · filtre de langue actif');
+    try {
+      const batch = await this.loader(first);
+      const fresh = batch.filter(v => !this.items.some(x => x.id === v.id));
+      if (!fresh.length) {
+        if (first) { this.exhausted = true; UI.emptyFeed(this); }
+        else if (this.active >= this.items.length - 2) UI.toast('Plus rien à charger pour l\'instant');
+        return;
+      }
+      const ordered = Discovery.interleave(fresh);   // jamais 10 vidéos d'affilée d'une même chaîne
+      for (const v of ordered) this.append(v);
+      if (first) {
+        UI.hideState();
+        this.root.hidden = false;
+        this.setActive(0);
+        this.tick();
+      }
+    } catch (e) {
+      UI.apiError(e, () => this.refill(first));
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  /* ---------- construction d'une slide ---------- */
+  append(v) {
+    this.items.push(v);
+    const s = el('article', 'slide');
+    s.dataset.id = v.id;
+    const ch = v.channel || State.ccache[v.channelId] || {};
+    const fav = !!State.favorites[v.channelId];
+    const liked = !!State.liked[v.id];
+    const conf = Math.round((v.lang?.conf ?? 1) * 100);
+
+    s.innerHTML = `
+      <div class="poster" style="background-image:url('${esc(v.thumb)}')"></div>
+      <div class="pwrap"><div class="mount"></div></div>
+      <div class="spin"></div>
+      <div class="veil"></div>
+      <div class="tapzone"></div>
+      <div class="pulse">${ICON.play}</div>
+      <div class="info">
+        <div class="chan">
+          <img src="${esc(ch.thumb || '')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+          <span class="cname">${esc(v.channelTitle || ch.title || '')}</span>
+          <button class="follow${fav ? ' on' : ''}" data-act="follow">${fav ? 'Suivi' : 'Suivre'}</button>
+        </div>
+        <div class="vtitle">${esc(v.title)}</div>
+        <div class="chips">
+          <span class="chip fr" title="${esc(v.lang?.reason || '')} · confiance ${conf}%">🇫🇷 ${esc(v.lang?.reason || 'français')}</span>
+          <span class="chip">${fmtDur(v.duration)}</span>
+          <span class="chip">${fmtNum(v.views)} vues</span>
+          <span class="chip">${esc(fmtAgo(v.publishedAt))}</span>
+          ${v.source ? `<span class="chip src">${esc(v.source)}</span>` : ''}
+        </div>
+      </div>
+      <div class="rail">
+        <button class="like${liked ? ' on' : ''}" data-act="like">${ICON.heart}<span class="lbl">${liked ? 'Aimé' : 'J\'aime'}</span></button>
+        <button class="flag" data-act="notfr">${ICON.ban}<span class="lbl">Pas FR</span></button>
+        <button class="snd" data-act="sound">${State.settings.sound ? ICON.sndOn : ICON.sndOff}<span class="lbl">Son</span></button>
+        <button class="sh" data-act="open">${ICON.share}<span class="lbl">YouTube</span></button>
+      </div>
+      <div class="bar"><i><b></b></i></div>`;
+
+    this.root.appendChild(s);
+    this.slides.set(v.id, s);
+    this.io.observe(s);
+    this.wire(s, v);
+  }
+
+  wire(s, v) {
+    /* tap : play/pause · double tap : j'aime */
+    let tapTimer = null;
+    $('.tapzone', s).addEventListener('click', () => {
+      if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; this.like(v, true); return; }
+      tapTimer = setTimeout(() => { tapTimer = null; this.togglePlay(v); }, 230);
+    });
+    $('.vtitle', s).addEventListener('click', e => { e.stopPropagation(); e.currentTarget.classList.toggle('open'); });
+    $('.bar', s).addEventListener('click', e => {
+      const p = this.players.get(v.id); if (!p?.seekTo) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      try { p.seekTo(clamp((e.clientX - r.left) / r.width, 0, 1) * (p.getDuration() || v.duration), true); } catch {}
+    });
+    s.addEventListener('click', e => {
+      const btn = e.target.closest('[data-act]'); if (!btn) return;
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      if (act === 'like')   this.like(v);
+      if (act === 'follow') this.follow(v, btn);
+      if (act === 'notfr')  this.notFrench(v);
+      if (act === 'sound')  UI.setSound(!State.settings.sound);
+      if (act === 'open')   window.open(`https://www.youtube.com/watch?v=${v.id}`, '_blank', 'noopener');
+    });
+  }
+
+  /* ---------- observation / activation ---------- */
+  onIntersect(entries) {
+    for (const e of entries) {
+      if (e.isIntersecting && e.intersectionRatio >= .55) {
+        const idx = this.items.findIndex(x => x.id === e.target.dataset.id);
+        if (idx >= 0 && idx !== this.active) this.setActive(idx);
+      }
+    }
+  }
+  onScroll() {
+    clearTimeout(this._st);
+    this._st = setTimeout(() => {
+      if (this.active >= this.items.length - this.refillAt) this.refill(false);
+    }, 140);
+  }
+
+  setActive(idx) {
+    const prev = this.items[this.active];
+    if (prev) { const p = this.players.get(prev.id); if (p) { try { p.pauseVideo(); } catch {} } }
+    this.active = idx;
+    const v = this.items[idx];
+    if (!v) return;
+    markSeen(v.id);
+    Discovery.reinforce(v, .35);                 // vu = signal faible d'intérêt
+    this.ensurePlayers();
+    this.playActive();
+    if (idx >= this.items.length - this.refillAt) this.refill(false);
+    UI.onActiveChange(this, v);
+  }
+
+  /* ---------- gestion des lecteurs ---------- */
+  ensurePlayers() {
+    const keep = new Set();
+    for (let i = this.active - 1; i <= this.active + 1; i++) {
+      const v = this.items[i];
+      if (!v) continue;
+      keep.add(v.id);
+      if (!this.players.has(v.id)) this.createPlayer(v, i === this.active);
+    }
+    for (const [id, p] of [...this.players]) {
+      if (keep.has(id)) continue;
+      try { p.destroy(); } catch {}
+      this.players.delete(id);
+      const s = this.slides.get(id);
+      if (s) { const w = $('.pwrap', s); if (w) w.innerHTML = '<div class="mount"></div>'; }
+    }
+  }
+
+  createPlayer(v, isActive) {
+    const s = this.slides.get(v.id);
+    if (!s || !window.YT?.Player) return;
+    const mount = $('.mount', s);
+    if (!mount) return;
+    const vars = {
+      controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1,
+      iv_load_policy: 3, modestbranding: 1, cc_load_policy: 0,
+      autoplay: isActive ? 1 : 0, mute: 1,
+    };
+    if (location.protocol.startsWith('http')) vars.origin = location.origin;
+
+    let p;
+    try {
+      p = new YT.Player(mount, {
+        videoId: v.id, host: 'https://www.youtube-nocookie.com', playerVars: vars,
+        events: {
+          onReady: () => {
+            try { p.mute(); } catch {}
+            if (this.items[this.active]?.id === v.id) this.playActive();
+          },
+          onStateChange: e => this.onPlayerState(v, e),
+          onError: () => this.onPlayerError(v),
+        },
+      });
+    } catch { return; }
+    this.players.set(v.id, p);
+  }
+
+  onPlayerState(v, e) {
+    const s = this.slides.get(v.id);
+    if (!s) return;
+    const spin = $('.spin', s), poster = $('.poster', s);
+    const st = e.data;
+    if (st === YT.PlayerState.BUFFERING) spin?.classList.add('on');
+    else spin?.classList.remove('on');
+    if (st === YT.PlayerState.PLAYING) { poster && (poster.style.opacity = '0'); }
+    if (st === YT.PlayerState.ENDED && this.items[this.active]?.id === v.id) {
+      if (State.settings.loopSingle) { try { e.target.seekTo(0, true); e.target.playVideo(); } catch {} }
+      else if (State.settings.autoAdvance) this.next();
+    }
+  }
+
+  onPlayerError(v) {
+    markSeen(v.id);
+    const s = this.slides.get(v.id);
+    if (s) {
+      $('.spin', s)?.classList.remove('on');
+      const info = $('.info', s);
+      if (info) info.insertAdjacentHTML('afterbegin', '<div class="chip" style="align-self:flex-start">Vidéo indisponible — passage au suivant</div>');
+    }
+    if (this.items[this.active]?.id === v.id) setTimeout(() => this.next(), 700);
+  }
+
+  playActive() {
+    const v = this.items[this.active];
+    if (!v) return;
+    const p = this.players.get(v.id);
+    if (!p?.playVideo) return;
+    try {
+      if (State.settings.sound) { p.unMute(); p.setVolume(100); } else p.mute();
+      p.playVideo();
+    } catch {}
+  }
+
+  togglePlay(v) {
+    const p = this.players.get(v.id), s = this.slides.get(v.id);
+    if (!p?.getPlayerState) return;
+    let playing = false;
+    try { playing = p.getPlayerState() === YT.PlayerState.PLAYING; } catch {}
+    try { playing ? p.pauseVideo() : p.playVideo(); } catch {}
+    const pulse = $('.pulse', s);
+    if (pulse) {
+      pulse.innerHTML = playing ? ICON.pause : ICON.play;
+      pulse.classList.add('on');
+      clearTimeout(this._pt);
+      this._pt = setTimeout(() => pulse.classList.remove('on'), 480);
+    }
+  }
+
+  next() { this.scrollToIndex(this.active + 1); }
+  prev() { this.scrollToIndex(this.active - 1); }
+  scrollToIndex(i) {
+    if (i < 0 || i >= this.items.length) { if (i >= this.items.length) this.refill(false); return; }
+    const s = this.slides.get(this.items[i].id);
+    s?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /* ---------- barre de progression ---------- */
+  tick() {
+    cancelAnimationFrame(this.raf);
+    const loop = () => {
+      const v = this.items[this.active];
+      if (v) {
+        const p = this.players.get(v.id), s = this.slides.get(v.id);
+        if (p?.getCurrentTime && s) {
+          try {
+            const d = p.getDuration() || v.duration, c = p.getCurrentTime();
+            const b = $('.bar b', s);
+            if (b && d) b.style.width = clamp(c / d, 0, 1) * 100 + '%';
+          } catch {}
+        }
+      }
+      this.raf = requestAnimationFrame(loop);
+    };
+    this.raf = requestAnimationFrame(loop);
+  }
+
+  /* ---------- actions ---------- */
+  like(v, force) {
+    const on = !State.liked[v.id];
+    if (force && !on) return;
+    if (on) { State.liked[v.id] = { title: v.title, channelId: v.channelId, ts: Date.now() }; Discovery.reinforce(v, 2.5); Lang.learn(v.channelId, true, false); Discovery.addToPool(v.channelId, v.channel, 1.5); save.pool(); }
+    else delete State.liked[v.id];
+    save.liked();
+    const s = this.slides.get(v.id);
+    if (s) { const b = $('.like', s); b.classList.toggle('on', on); $('.lbl', b).textContent = on ? 'Aimé' : "J'aime"; }
+    if (on && force) UI.toast('❤️ Ajouté à tes j\'aime');
+  }
+
+  follow(v, btn) {
+    const on = !State.favorites[v.channelId];
+    if (on) {
+      const ch = v.channel || State.ccache[v.channelId] || {};
+      State.favorites[v.channelId] = {
+        title: v.channelTitle || ch.title || 'Chaîne',
+        thumb: ch.thumb || '', uploads: ch.uploads || uploadsOf(v.channelId),
+        addedAt: Date.now(), lastSeenAt: Date.now(), lastPulled: 0, newCount: 0,
+      };
+      Lang.whitelist(v.channelId);
+      Discovery.addToPool(v.channelId, ch, 2); save.pool();
+      Discovery.reinforce(v, 3);
+      UI.toast(`✓ ${State.favorites[v.channelId].title} — tu verras ses nouveautés`);
+    } else {
+      delete State.favorites[v.channelId];
+      UI.toast('Chaîne retirée');
+    }
+    save.favorites();
+    /* synchronise tous les boutons de cette chaîne */
+    for (const [id, s] of this.slides) {
+      const item = this.items.find(x => x.id === id);
+      if (item?.channelId !== v.channelId) continue;
+      const b = $('.follow', s);
+      if (b) { b.classList.toggle('on', on); b.textContent = on ? 'Suivi' : 'Suivre'; }
+    }
+    UI.refreshSubsBadge();
+    if (on) Subs.invalidate();
+  }
+
+  /** Signalement utilisateur : la chaîne entière est écartée. */
+  notFrench(v) {
+    Lang.blacklist(v.channelId);
+    delete State.pool[v.channelId]; save.pool();
+    Discovery.forgetChannel(v.channelId);
+    UI.toast(`🚫 ${v.channelTitle || 'Chaîne'} écartée du feed`);
+    /* purge les vidéos de cette chaîne encore en file (au-delà de l'actif) */
+    for (let i = this.items.length - 1; i > this.active; i--) {
+      if (this.items[i].channelId !== v.channelId) continue;
+      const id = this.items[i].id;
+      const s = this.slides.get(id);
+      if (s) { this.io.unobserve(s); s.remove(); }
+      const p = this.players.get(id);
+      if (p) { try { p.destroy(); } catch {} this.players.delete(id); }
+      this.slides.delete(id);
+      this.items.splice(i, 1);
+    }
+    markSeen(v.id);
+    this.next();
+  }
+
+  applySound() {
+    for (const [id, p] of this.players) {
+      try {
+        if (State.settings.sound && this.items[this.active]?.id === id) { p.unMute(); p.setVolume(100); }
+        else p.mute();
+      } catch {}
+    }
+    for (const s of this.slides.values()) {
+      const b = $('.snd', s);
+      if (b) b.innerHTML = (State.settings.sound ? ICON.sndOn : ICON.sndOff) + '<span class="lbl">Son</span>';
+    }
+  }
+
+  reset() {
+    cancelAnimationFrame(this.raf); this.raf = 0;
+    for (const p of this.players.values()) { try { p.destroy(); } catch {} }
+    this.players.clear();
+    for (const s of this.slides.values()) this.io.unobserve(s);
+    this.slides.clear();
+    this.items = [];
+    this.active = -1;
+    this.exhausted = false;
+    this.root.innerHTML = '';
+    this.root.scrollTop = 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   11. ABONNEMENTS
+   `playlistItems` renvoie `contentDetails.videoPublishedAt` : on peut donc
+   calculer les badges « nouveautés » pour 1 u par chaîne, sans videos.list.
+   ══════════════════════════════════════════════════════════════════════ */
+const Subs = (() => {
+  let recent = Store.get('subsRecent', {});   // channelId → [{id, pub}]
+  let lastScan = Store.get('subsScan', 0);
+  let dirty = true;
+
+  const invalidate = () => { dirty = true; };
+
+  /** Scan des uploads de chaque chaîne suivie — 1 u par chaîne. */
+  async function refresh(force = false) {
+    const favs = Object.entries(State.favorites);
+    if (!favs.length) return { channels: 0, fresh: 0 };
+    if (!force && Date.now() - lastScan < 6 * 3600e3 && !dirty) return { channels: favs.length, fresh: totalNew() };
+
+    for (const [id, f] of favs) {
+      const pl = f.uploads || uploadsOf(id);
+      if (!pl) continue;
+      try {
+        const data = await Api.playlistItems(pl);
+        const list = (data.items || [])
+          .map(i => ({ id: i.contentDetails?.videoId, pub: i.contentDetails?.videoPublishedAt }))
+          .filter(x => x.id && x.pub)
+          .sort((a, b) => new Date(b.pub) - new Date(a.pub))
+          .slice(0, 15);
+        recent[id] = list;
+        f.newCount = list.filter(x => new Date(x.pub).getTime() > (f.lastSeenAt || f.addedAt || 0)).length;
+        f.lastCheck = Date.now();
+      } catch (e) {
+        if (e.reason === 'quotaExceeded') break;
+        f.newCount = f.newCount || 0;
+      }
+    }
+    lastScan = Date.now(); dirty = false;
+    Store.set('subsRecent', recent); Store.set('subsScan', lastScan); save.favorites();
+    return { channels: favs.length, fresh: totalNew() };
+  }
+
+  const totalNew = () => Object.values(State.favorites).reduce((s, f) => s + (f.newCount || 0), 0);
+
+  /** Construit le feed « Abonnements » : toutes durées, du plus récent au plus ancien. */
+  async function load() {
+    await refresh();
+    const rows = [];
+    for (const [cid, list] of Object.entries(recent)) {
+      if (!State.favorites[cid]) continue;
+      for (const x of list) rows.push({ cid, ...x });
+    }
+    rows.sort((a, b) => new Date(b.pub) - new Date(a.pub));
+    const ids = rows.slice(0, 60).map(r => r.id);
+
+    const need = ids.filter(id => !State.vcache[id]);
+    for (let i = 0; i < need.length; i += 50) {
+      try { const d = await Api.videos(need.slice(i, i + 50)); (d.items || []).forEach(it => State.vcache[it.id] = normVideo(it)); }
+      catch (e) { if (e.reason === 'quotaExceeded') throw e; }
+    }
+    save.vcache();
+
+    /* On ne filtre ni langue ni durée : ce sont les chaînes choisies par l'utilisateur. */
+    const out = ids.map(id => State.vcache[id])
+      .filter(v => v && v.embeddable !== false && v.privacy === 'public' && isFinite(v.duration) && v.duration >= 3)
+      .map(v => {
+        const f = State.favorites[v.channelId];
+        const isNew = f && new Date(v.publishedAt).getTime() > (f.lastSeenAt || f.addedAt || 0);
+        return Object.assign({}, v, {
+          channel: State.ccache[v.channelId] || null,
+          source: isNew ? 'nouveauté' : 'abonnement',
+          lang: { fr: true, conf: 1, reason: 'chaîne suivie' },
+        });
+      })
+      .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+    /* Vu = les nouveautés sont considérées consultées. */
+    for (const f of Object.values(State.favorites)) { f.lastSeenAt = Date.now(); f.newCount = 0; }
+    save.favorites();
+    return out;
+  }
+
+  return { refresh, load, invalidate, totalNew, get recent() { return recent; }, get lastScan() { return lastScan; } };
+})();
+
+/* ══════════════════════════════════════════════════════════════════════
+   12. INTERFACE
+   ══════════════════════════════════════════════════════════════════════ */
+const feeds = {};
+let current = 'foryou';
+
+const UI = {
+  /* ---------- toast ---------- */
+  toast(msg, bad) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.toggle('bad', !!bad);
+    t.classList.add('on');
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => t.classList.remove('on'), 2600);
+  },
+
+  /* ---------- écran d'état ---------- */
+  showState(kind, title, msg, btnLabel, btnFn) {
+    const box = $('#stateBox');
+    $('#statePump').hidden = kind !== 'loading';
+    $('#stateTitle').textContent = title;
+    $('#stateMsg').textContent = msg || '';
+    const b = $('#stateBtn');
+    b.hidden = !btnLabel;
+    if (btnLabel) { b.textContent = btnLabel; b.onclick = btnFn; }
+    $('#nudge').hidden = true;
+    box.hidden = false;
+  },
+  hideState() { $('#stateBox').hidden = true; },
+
+  /* ---------- erreurs API ---------- */
+  apiError(e, retry) {
+    const r = e?.reason;
+    if (r === 'noKey' || r === 'keyInvalid' || r === 'badRequest' && /API key/i.test(e.message || '')) {
+      Store.del('key'); State.key = '';
+      $('#setup').hidden = false;
+      $('#topbar').hidden = true;
+      $('#keyErr').textContent = 'Clé refusée par YouTube. Vérifie qu\'elle est active et que « YouTube Data API v3 » est activée.';
+      this.hideState();
+      return;
+    }
+    if (r === 'quotaExceeded' || r === 'dailyLimitExceeded') {
+      this.showState('err', 'Quota du jour épuisé',
+        'Le quota YouTube (10 000 unités) se réinitialise à minuit heure du Pacifique (≈ 9 h en France). Le contenu déjà chargé reste consultable.',
+        'Voir les réglages', () => { this.hideState(); this.openPanel('panelSettings'); });
+      return;
+    }
+    if (r === 'forbidden' || r === 'accessNotConfigured') {
+      this.showState('err', 'Accès refusé',
+        'L\'API n\'est pas activée sur ce projet Google Cloud, ou la restriction par domaine ne couvre pas cette page.',
+        'Réessayer', retry);
+      return;
+    }
+    if (r === 'network') {
+      this.showState('err', 'Pas de connexion', 'Impossible de joindre googleapis.com.', 'Réessayer', retry);
+      return;
+    }
+    this.showState('err', 'Erreur', e?.message || String(e), 'Réessayer', retry);
+  },
+
+  emptyFeed(feed) {
+    if (feed.name === 'subs') {
+      this.showState('empty', 'Aucun abonnement',
+        'Appuie sur « Suivre » sur une vidéo qui te plaît : ses nouveautés apparaîtront ici.',
+        'Retour au feed', () => this.tab('foryou'));
+    } else {
+      this.showState('empty', 'Rien trouvé pour l\'instant',
+        'Assouplis le filtre de langue dans les réglages, ou réessaie : la découverte tire de nouvelles requêtes à chaque fois.',
+        'Réessayer', () => { this.hideState(); feed.exhausted = false; Discovery.resetBackoff(); feed.refill(true); });
+    }
+  },
+
+  /* ---------- onglets ---------- */
+  async tab(name, force) {
+    if (!force && name === current && !feeds[name]?.root.hidden) return;
+    $$('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    feeds[current]?.suspend();
+    current = name;
+    this.hideState();
+    const f = feeds[name];
+    if (!f) return;
+    if (name === 'subs' && !Object.keys(State.favorites).length) { this.emptyFeed(f); f.root.hidden = true; return; }
+    await f.start();
+    if (f.items.length) { f.root.hidden = false; f.resume(); }
+    this.refreshSubsBadge();
+  },
+
+  /* ---------- panneaux ---------- */
+  openPanel(id) {
+    const p = $('#' + id);
+    p.hidden = false;
+    requestAnimationFrame(() => p.classList.add('on'));
+    if (id === 'panelSettings') this.renderSettings();
+    if (id === 'panelSubs') this.renderSubs();
+  },
+  closePanel(id) {
+    const p = $('#' + id);
+    p.classList.remove('on');
+    setTimeout(() => { p.hidden = true; }, 340);
+  },
+
+  /* ---------- son ---------- */
+  setSound(on) {
+    State.settings.sound = on;
+    save.settings();
+    $('#nudge').hidden = on;
+    Object.values(feeds).forEach(f => f.applySound());
+  },
+
+  onActiveChange(feed, v) {
+    if (!State.settings.sound && feed === feeds[current]) $('#nudge').hidden = false;
+  },
+
+  refreshSubsBadge() {
+    const n = Subs.totalNew();
+    const b = $('#subsCnt');
+    b.hidden = n <= 0;
+    b.textContent = n > 99 ? '99+' : n;
+  },
+
+  /* ---------- panneau abonnements ---------- */
+  renderSubs() {
+    const body = $('#subsList');
+    const favs = Object.entries(State.favorites).sort((a, b) => (b[1].newCount || 0) - (a[1].newCount || 0) || b[1].addedAt - a[1].addedAt);
+    if (!favs.length) {
+      body.innerHTML = `<div class="empty"><div class="big">🔔</div>
+        <p>Aucune chaîne suivie.<br>Appuie sur <b>Suivre</b> sous une vidéo pour recevoir ses nouveautés.</p></div>`;
+      return;
+    }
+    body.innerHTML = `<div class="sechead">${favs.length} chaîne${favs.length > 1 ? 's' : ''} suivie${favs.length > 1 ? 's' : ''}</div>` +
+      favs.map(([id, f]) => `
+        <div class="crow" data-cid="${esc(id)}">
+          <img src="${esc(f.thumb || '')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+          <div class="cx">
+            <div class="cn">${esc(f.title)}</div>
+            <div class="cs">${f.newCount ? `<b>${f.newCount} nouveauté${f.newCount > 1 ? 's' : ''}</b> · ` : ''}${
+              f.lastCheck ? 'vérifié ' + fmtAgo(new Date(f.lastCheck).toISOString()) : 'pas encore vérifié'}</div>
+          </div>
+          <button class="mini" data-open="${esc(id)}">Voir</button>
+          <button class="mini danger" data-unfollow="${esc(id)}">✕</button>
+        </div>`).join('') +
+      `<div class="sechead">Nouveautés</div>
+       <div class="row"><div class="rx"><div class="rt">Dernier scan</div>
+         <div class="rd">${Subs.lastScan ? fmtAgo(new Date(Subs.lastScan).toISOString()) : 'jamais'} · coût : 1 unité par chaîne</div></div>
+         <button class="mini" id="subsScanNow">Scanner</button></div>`;
+  },
+
+  /* ---------- panneau réglages ---------- */
+  renderSettings() {
+    const s = State.settings;
+    const q = Quota;
+    const st = State.stats;
+    const total = st.fetched || 1;
+    const poolN = Object.keys(State.pool).length;
+    const frChans = Object.values(State.chanLang).filter(c => c.verdict === 'fr').length;
+    const noChans = Object.values(State.chanLang).filter(c => c.verdict === 'other').length;
+    const det = { ready: 'actif (on-device)', absent: 'non supporté par ce navigateur', unknown: '…' }[Lang.detectorState] || 'indisponible';
+
+    $('#settingsBody').innerHTML = `
+      <div class="sechead">Filtre de langue</div>
+      <div class="row"><div class="rx"><div class="rt">Sévérité</div>
+        <div class="rd">${s.strictness === 'strict'
+          ? 'Strict — uniquement les preuves dures (audio ou métadonnées FR déclarés, chaîne déjà vérifiée). Très peu de faux positifs, moins de volume.'
+          : s.strictness === 'large'
+          ? 'Large — accepte les indices faibles (pays de la chaîne, texte partiellement français). Plus de volume, quelques erreurs.'
+          : 'Équilibré — preuves dures + détecteur natif + heuristique texte avec marge. Recommandé.'}</div></div>
+        <div class="seg" id="segStrict">
+          <button data-v="strict" class="${s.strictness === 'strict' ? 'on' : ''}">Strict</button>
+          <button data-v="balanced" class="${s.strictness === 'balanced' ? 'on' : ''}">Équilibré</button>
+          <button data-v="large" class="${s.strictness === 'large' ? 'on' : ''}">Large</button>
+        </div></div>
+      <div class="row"><div class="rx"><div class="rt">Détecteur natif du navigateur</div>
+        <div class="rd">LanguageDetector API : ${esc(det)}</div></div></div>
+      <div class="row"><div class="rx"><div class="rt">Mémoire des chaînes</div>
+        <div class="rd"><b>${frChans}</b> chaîne(s) validées FR · <b>${noChans}</b> écartée(s). Le filtre s'affine à chaque vidéo.</div></div>
+        <button class="mini danger" id="resetLang">Oublier</button></div>
+
+      <div class="sechead">Lecture</div>
+      <div class="row"><div class="rx"><div class="rt">Son activé</div><div class="rd">Le navigateur exige un geste avant d'autoriser le son.</div></div>
+        <div class="sw ${s.sound ? 'on' : ''}" id="swSound" role="switch" aria-checked="${s.sound}"></div></div>
+      <div class="row"><div class="rx"><div class="rt">Enchaîner automatiquement</div><div class="rd">Passe au Short suivant à la fin.</div></div>
+        <div class="sw ${s.autoAdvance ? 'on' : ''}" id="swAuto" role="switch" aria-checked="${s.autoAdvance}"></div></div>
+      <div class="row"><div class="rx"><div class="rt">Boucler la vidéo</div><div class="rd">Prioritaire sur l'enchaînement.</div></div>
+        <div class="sw ${s.loopSingle ? 'on' : ''}" id="swLoop" role="switch" aria-checked="${s.loopSingle}"></div></div>
+      <div class="row"><div class="rx"><div class="rt">Durée maximale</div><div class="rd">Les Shorts YouTube vont jusqu'à 3 min depuis 2024.</div></div>
+        <div class="seg" id="segDur">
+          ${[30, 60, 90, 180].map(n => `<button data-v="${n}" class="${s.maxSeconds === n ? 'on' : ''}">${n}s</button>`).join('')}
+        </div></div>
+
+      <div class="sechead">Quota API</div>
+      <div class="row" style="display:block">
+        <div class="kv"><span>Utilisé aujourd'hui</span><b>${q.used} / ${q.limit} u</b></div>
+        <div class="meter"><i style="width:${clamp(q.used / q.limit * 100, 0, 100)}%"></i></div>
+        <div class="kv"><span>Appels API</span><b>${q.calls}</b></div>
+        <div class="kv"><span>Recherches (100 u chacune)</span><b>${Discovery.searches}</b></div>
+        <div class="kv"><span>Pool de chaînes découvertes</span><b>${poolN}</b></div>
+        <div class="rd" style="margin-top:8px">Réinitialisation à minuit heure du Pacifique (≈ 9 h en France). Le pool de chaînes permet de recharger le feed à 1 unité pour 50 vidéos au lieu de 100.</div>
+      </div>
+
+      <div class="sechead">Filtrage — cumul</div>
+      <div class="row" style="display:block">
+        <div class="kv"><span>Vidéos analysées</span><b>${st.fetched}</b></div>
+        <div class="kv"><span>Retenues en français</span><b style="color:var(--accent-2)">${st.keptFr} (${Math.round(st.keptFr / total * 100)}%)</b></div>
+        <div class="kv"><span>Écartées — langue</span><b>${st.rejectedLang}</b></div>
+        <div class="kv"><span>Écartées — durée</span><b>${st.rejectedDur}</b></div>
+        <div class="kv"><span>Écartées — indispo/embargo</span><b>${st.rejectedOther}</b></div>
+      </div>
+
+      <div class="sechead">Intérêts appris</div>
+      <div class="row" style="display:block">
+        <div class="chips">${(Discovery.topTerms(14).map(t => `<span class="chip">${esc(t)}</span>`).join('') || '<span class="rd">Aime des vidéos pour personnaliser la découverte.</span>')}</div>
+        <div class="chips" style="margin-top:8px">${Discovery.topCats(4).map(c => `<span class="chip">${esc(CAT_NAMES[c] || c)}</span>`).join('')}</div>
+      </div>
+
+      <div class="sechead">Données</div>
+      <div class="row"><div class="rx"><div class="rt">Vidéos vues</div><div class="rd">${State.seen.length} identifiants mémorisés pour ne rien répéter.</div></div>
+        <button class="mini" id="resetSeen">Vider</button></div>
+      <div class="row"><div class="rx"><div class="rt">Clé API</div><div class="rd">${State.key ? '••••' + esc(State.key.slice(-6)) : 'absente'}${Store.available ? '' : ' · localStorage indisponible : rien n\'est conservé'}</div></div>
+        <button class="mini danger" id="resetKey">Changer</button></div>
+      <div class="row"><div class="rx"><div class="rt">Tout réinitialiser</div><div class="rd">Abonnements, j'aime, intérêts, caches et clé.</div></div>
+        <button class="mini danger" id="resetAll">Effacer</button></div>
+      <div class="rd" style="margin-top:16px;text-align:center">Shorts FR · lecture via le lecteur YouTube intégré</div>`;
+  },
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   13. CÂBLAGE DES ÉVÉNEMENTS
+   ══════════════════════════════════════════════════════════════════════ */
+$$('.tab').forEach(b => b.addEventListener('click', () => UI.tab(b.dataset.tab)));
+$('#btnSettings').addEventListener('click', () => UI.openPanel('panelSettings'));
+$('#btnSubsPanel').addEventListener('click', () => UI.openPanel('panelSubs'));
+$$('[data-close]').forEach(b => b.addEventListener('click', () => UI.closePanel(b.dataset.close)));
+$('#nudge').addEventListener('click', () => UI.setSound(true));
+
+/* panneau abonnements */
+$('#subsList').addEventListener('click', async e => {
+  const open = e.target.closest('[data-open]'), un = e.target.closest('[data-unfollow]');
+  if (un) {
+    const id = un.dataset.unfollow;
+    delete State.favorites[id];
+    save.favorites(); Subs.invalidate(); UI.renderSubs(); UI.refreshSubsBadge();
+    UI.toast('Chaîne retirée');
+    return;
+  }
+  if (open) {
+    UI.closePanel('panelSubs');
+    feeds.subs?.reset();
+    Subs.invalidate();
+    await UI.tab('subs', true);
+  }
+});
+$('#subsRefresh').addEventListener('click', async e => {
+  e.target.textContent = '…';
+  try { const r = await Subs.refresh(true); UI.toast(`${r.fresh} nouveauté${r.fresh > 1 ? 's' : ''} sur ${r.channels} chaîne${r.channels > 1 ? 's' : ''}`); }
+  catch (err) { UI.toast(err.message || 'Erreur', true); }
+  e.target.textContent = 'Actualiser';
+  UI.renderSubs(); UI.refreshSubsBadge();
+});
+document.addEventListener('click', async e => {
+  if (e.target.id === 'subsScanNow') $('#subsRefresh').click();
+});
+
+/* panneau réglages */
+$('#settingsBody').addEventListener('click', e => {
+  const t = e.target;
+  const seg = t.closest('#segStrict button');
+  if (seg) {
+    State.settings.strictness = seg.dataset.v; save.settings();
+    Discovery.requeueSoftRejects();          // les vidéos « sans preuve » repassent le test
+    UI.renderSettings(); UI.toast('Filtre : ' + seg.textContent); return;
+  }
+  const dur = t.closest('#segDur button');
+  if (dur) { State.settings.maxSeconds = +dur.dataset.v; save.settings(); UI.renderSettings(); UI.toast('Durée max : ' + dur.dataset.v + 's'); return; }
+  if (t.closest('#swSound')) { UI.setSound(!State.settings.sound); UI.renderSettings(); return; }
+  if (t.closest('#swAuto'))  { State.settings.autoAdvance = !State.settings.autoAdvance; save.settings(); UI.renderSettings(); return; }
+  if (t.closest('#swLoop'))  { State.settings.loopSingle = !State.settings.loopSingle; save.settings(); UI.renderSettings(); return; }
+  if (t.id === 'resetLang')  { State.chanLang = {}; save.chanLang(); UI.renderSettings(); UI.toast('Mémoire des chaînes effacée'); return; }
+  if (t.id === 'resetSeen')  { State.seen = []; seenSet.clear(); save.seen(); UI.renderSettings(); UI.toast('Historique vidé'); return; }
+  if (t.id === 'resetKey')   { Store.del('key'); State.key = ''; location.reload(); return; }
+  if (t.id === 'resetAll') {
+    if (!confirm('Effacer abonnements, j\'aime, intérêts et clé API ?')) return;
+    Store.clearAll(); location.reload();
+  }
+});
+
+/* clavier */
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea')) return;
+  const f = feeds[current];
+  if (!f) return;
+  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') { e.preventDefault(); f.next(); }
+  else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'k') { e.preventDefault(); f.prev(); }
+  else if (e.key === ' ') { e.preventDefault(); const v = f.items[f.active]; if (v) f.togglePlay(v); }
+  else if (e.key === 'm') UI.setSound(!State.settings.sound);
+  else if (e.key === 'l') { const v = f.items[f.active]; if (v) f.like(v); }
+  else if (e.key === 'Escape') { $$('.panel.on').forEach(p => UI.closePanel(p.id)); }
+});
+
+/* onglet en arrière-plan : on met en pause pour ne pas consommer de bande passante */
+document.addEventListener('visibilitychange', () => {
+  const f = feeds[current];
+  if (!f) return;
+  if (document.hidden) { for (const p of f.players.values()) { try { p.pauseVideo(); } catch {} } }
+  else f.playActive();
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   14. AMORÇAGE
+   ══════════════════════════════════════════════════════════════════════ */
+$('#keyGo').addEventListener('click', submitKey);
+$('#keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitKey(); });
+
+async function submitKey() {
+  const btn = $('#keyGo'), input = $('#keyInput'), err = $('#keyErr');
+  const k = input.value.trim();
+  err.textContent = '';
+  if (!/^AIza[\w-]{20,}$/.test(k)) { err.textContent = 'Une clé YouTube commence par « AIza » et fait ~39 caractères.'; return; }
+  btn.disabled = true; btn.textContent = 'Vérification…';
+  State.key = k;
+  try {
+    await Api.call('videoCategories', { part: 'snippet', regionCode: 'FR', hl: 'fr' });  // 1 u
+    Store.set('key', k);
+    $('#setup').hidden = true;
+    boot();
+  } catch (e) {
+    State.key = '';
+    err.textContent = e.reason === 'quotaExceeded'
+      ? 'Clé valide mais quota déjà épuisé sur ce projet. Réessaie après minuit heure du Pacifique.'
+      : (e.message || 'Clé refusée.');
+    btn.disabled = false; btn.textContent = 'Lancer le feed';
+  }
+}
+
+async function boot() {
+  $('#topbar').hidden = false;
+  UI.showState('loading', 'Préparation du lecteur…', '');
+  Lang.initDetector();                       // non bloquant
+
+  try { await YTApi.load(); }
+  catch {
+    UI.showState('err', 'Lecteur YouTube inaccessible',
+      'Le script iframe_api n\'a pas pu être chargé (bloqueur de contenu, réseau ?).', 'Réessayer', () => location.reload());
+    return;
+  }
+
+  feeds.foryou = new Feed('feed-foryou', async first => {
+    const want = first ? 8 : 6;
+    const got = await Discovery.collect(want, (n, src) => {
+      if (first) $('#stateMsg').textContent = `${n} Short${n > 1 ? 's' : ''} français trouvé${n > 1 ? 's' : ''} · source : ${src}`;
+    });
+    return got;
+  }, { name: 'foryou', refillAt: 4 });
+
+  feeds.subs = new Feed('feed-subs', () => Subs.load(), { name: 'subs', refillAt: 2 });
+
+  await UI.tab('foryou');   // l'invite « son » n'apparaît qu'avec la 1re slide (onActiveChange)
+
+  /* Scan des abonnements en tâche de fond (1 u par chaîne) */
+  if (Object.keys(State.favorites).length) {
+    Subs.refresh().then(() => UI.refreshSubsBadge()).catch(() => {});
+  }
+}
+
+/* ---- démarrage ---- */
+if (State.key) { $('#setup').hidden = true; boot(); }
+else { $('#setup').hidden = false; $('#keyInput').focus(); }
+</script>
+</body>
+</html>
