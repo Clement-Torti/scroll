@@ -1,6 +1,6 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  SHORTS FR — stockage du profil dans une Google Sheet
+ *  TikTok — stockage du profil dans une Google Sheet
  * ══════════════════════════════════════════════════════════════════════
  *  Petite API JSON au-dessus d'une feuille de calcul. Le client garde son
  *  localStorage comme cache de travail (un feed vertical ne peut pas

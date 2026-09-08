@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0b0b16">
 <meta name="description" content="Un feed vertical infini de Shorts YouTube 100% en français.">
-<title>Shorts FR</title>
+<title>TikTok</title>
 <!-- Pas de favicon SVG : Chrome et Firefox le préfèrent aux PNG quand les deux
      sont déclarés, ce qui écraserait l'icône ci-dessous. `icons/icon.svg` est
      conservé dans le dépôt à titre de trace du dessin d'origine, non utilisé. -->
@@ -21,7 +21,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Shorts FR">
+<meta name="apple-mobile-web-app-title" content="TikTok">
 <style>
 /* ============================ TOKENS ============================ */
 :root{
@@ -400,7 +400,7 @@ a{color:var(--accent-2)}
   <!-- ========================= LOADING / EMPTY ========================= -->
   <div class="state" id="stateBox" hidden>
     <div class="pump" id="statePump"><i></i><i></i><i></i></div>
-    <h2 id="stateTitle">Recherche de Shorts français…</h2>
+    <h2 id="stateTitle">Recherche de TikTokançais…</h2>
     <p id="stateMsg"></p>
     <button class="btn ghost" id="stateBtn" hidden></button>
   </div>
@@ -451,7 +451,7 @@ a{color:var(--accent-2)}
 <script>
 "use strict";
 /* ══════════════════════════════════════════════════════════════════════
-   SHORTS FR — feed vertical de Shorts YouTube 100% francophones
+   TikTok — feed vertical de Shorts YouTube 100% francophones
    Single page, zéro dépendance. Tout l'état vit dans localStorage.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -1572,7 +1572,7 @@ class Feed {
   async refill(first = false) {
     if (this.loading || this.exhausted) return;
     this.loading = true;
-    if (first) UI.showState('loading', 'Recherche de Shorts français…', 'Découverte via l\'API YouTube · filtre de langue actif');
+    if (first) UI.showState('loading', 'Recherche de TikTokançais…', 'Découverte via l\'API YouTube · filtre de langue actif');
     try {
       const batch = await this.loader(first);
       const fresh = batch.filter(v => !this.items.some(x => x.id === v.id));
@@ -2539,7 +2539,7 @@ const UI = {
         <button class="mini danger" id="resetKey">Changer</button></div>
       <div class="row"><div class="rx"><div class="rt">Tout réinitialiser</div><div class="rd">Abonnements, j'aime, intérêts, caches et clé.</div></div>
         <button class="mini danger" id="resetAll">Effacer</button></div>
-      <div class="rd" style="margin-top:16px;text-align:center">Shorts FR · lecture via le lecteur YouTube intégré</div>`;
+      <div class="rd" style="margin-top:16px;text-align:center">TikTok · lecture via le lecteur YouTube intégré</div>`;
   },
 };
 

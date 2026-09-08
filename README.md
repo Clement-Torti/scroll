@@ -1,4 +1,4 @@
-# Shorts FR
+# TikTok
 
 Feed vertical estilo TikTok construido sobre el reproductor de YouTube, con
 **contenido exclusivamente en francés** y descubrimiento automático (nada de
@@ -11,7 +11,7 @@ se despliega tal cual en GitHub Pages.
 
 ```bash
 git init && git add index.html README.md
-git commit -m "Shorts FR"
+git commit -m "TikTok"
 git branch -M main
 git remote add origin git@github.com:<usuario>/<repo>.git
 git push -u origin main
