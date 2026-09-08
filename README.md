@@ -158,6 +158,36 @@ siguiente sincronización los devuelve. La purga limpia además
 Y el ranking `mostPopular` de Francia queda **desactivado** mientras el
 catálogo tenga reserva: traía canales de fuera de él.
 
+### Variedad de canales
+
+El `interleave` original tenía un **bug real**: repartía por índice, así que
+cuando los cubos cortos se agotaban, el más largo se vaciaba **de golpe al
+final**. Y como un tirón del pool trae hasta 12 vídeos de *un* canal y uno o
+dos de los demás, ese caso era la norma. Medido: `A B C D A A A A A A A A A A A`
+— **once vídeos consecutivos** del mismo canal.
+
+Tres mecanismos, porque ninguno basta solo:
+
+1. **`interleave` corregido**: sirve en cada turno el canal con más reserva,
+   nunca el que acaba de sonar. Reparte un lote grande en toda su longitud.
+2. **Un solo vídeo por canal y por lote**, con memoria **entre** lotes. Ni el
+   mejor orden evita la serie si un lote de 8 contiene 12 vídeos de un canal:
+   el sobrante espera en el búfer, no se pierde.
+3. **Reparto equitativo**: entre los candidatos permitidos, primero el canal
+   **menos servido**. Sin esto, el hueco solo hacía girar en círculo unos 17
+   canales teniendo 1798 disponibles.
+
+El hueco mínimo es de **30 posiciones**, y se **adapta** a los canales
+disponibles (`min(30, alcanzables/2)`). Ese ajuste no es cosmético: con hueco
+fijo de 60 y solo 80 canales, la restricción se vuelve imposible, los lotes
+caen a 2 vídeos y el coste se dispara a **17 u/vídeo**. Con 30 adaptativo:
+**1,06 u/vídeo**, 37 canales sobre 160 vídeos, máximo 5 pasadas por canal, y
+**nunca dos seguidas**.
+
+Además, una selección explícita de temas ahora **restringe** el pool, no solo
+lo pondera — si no, los canales descubiertos bajo los temas anteriores seguían
+alimentando el feed después de cambiarlos.
+
 ### La jerarquía de fuentes
 
 1. **`seed`** — un canal del catálogo que coincide con tus temas (3 u).

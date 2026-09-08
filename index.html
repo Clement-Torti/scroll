@@ -1672,11 +1672,19 @@ const Discovery = (() => {
   /** playlistItems sur les uploads d'une chaîne du pool — 1 u. */
   async function fromPool() {
     const now = Date.now();
-    const cands = Object.entries(State.pool)
+    let cands = Object.entries(State.pool)
       .filter(([id, p]) => p.uploads && Lang.channelVerdict(id) !== 'other' && now - (p.lastPulled || 0) > 90e3);
     if (!cands.length) return [];
     /* pondération : score de langue/appréciation × fraîcheur du dernier tirage */
     const wanted = new Set(onTopics());
+    /* Une sélection explicite restreint le pool, elle ne le pondère pas
+       seulement : sinon les chaînes découvertes sous les thèmes précédents
+       continuaient d'alimenter le feed après un changement. Repli sur tout le
+       pool s'il reste trop peu de chaînes du thème pour tenir la variété. */
+    if (wanted.size) {
+      const topical = cands.filter(([, p]) => (p.cats || []).some(c => wanted.has(c)));
+      if (topical.length >= 3) cands = topical;
+    }
     const chosen = weighted(cands.map(([id, p]) => {
       const rest = Math.min(3, (now - (p.lastPulled || 0)) / 6e5);
       const fav  = State.favorites[id] ? 2 : 1;
@@ -1803,9 +1811,13 @@ const Discovery = (() => {
        réserve : 100 unités pour un résultat approximatif contre 2 pour une
        chaîne francophone déjà vérifiée (3 u mesurées). */
     const canSearch = left >= COST.search + 200 && seedsLeft < 15;
+    /* L'annuaire passe devant le pool tant qu'il a de la réserve : recycler
+       les chaînes déjà connues coûte moins cher, mais faisait tourner le feed
+       sur une quinzaine de créateurs alors que le catalogue en propose près de
+       1 800. Une chaîne neuve coûte 3 unités — le prix de la variété. */
     return weighted([
-      ['seed',   seedsLeft ? 7 : 0],
-      ['pool',   6 + Math.min(6, poolSize / 12)],
+      ['seed',   seedsLeft ? 12 : 0],
+      ['pool',   3 + Math.min(4, poolSize / 25)],
       ['search', canSearch ? 1.2 : 0],
       /* Le classement FR ramène des chaînes hors annuaire : écarté tant que
          l'annuaire a de la réserve. */
@@ -1829,14 +1841,101 @@ const Discovery = (() => {
    */
   const buffer = [];
   const distinctChannels = list => new Set(list.map(v => v.channelId)).size;
-  const MIN_CHANNELS = 5;
 
-  /** Sort `want` vidéos du tampon en alternant les chaînes. */
+  /**
+   * Écart minimal, en positions du feed, entre deux vidéos d'une même chaîne.
+   * Réordonner ne suffit pas : avec douze vidéos d'une chaîne et trois autres
+   * en tout, aucun ordre n'évite la série. La seule contrainte qui tienne est
+   * de n'en servir qu'une par lot et d'attendre que d'autres chaînes soient
+   * disponibles — le surplus reste au tampon, rien n'est perdu.
+   */
+  /* Plafond de l'écart. Mesuré sur 190 vidéos, annuaire de 300 chaînes :
+       12 → 19 chaînes, jusqu'à 11 passages, 0,42 u/vidéo
+       25 → 32 chaînes, jusqu'à  7 passages, 0,82 u/vidéo
+       40 → 47 chaînes, jusqu'à  5 passages, 1,16 u/vidéo
+       60 → 67 chaînes, jusqu'à  3 passages, 1,72 u/vidéo
+     Jamais deux vidéos consécutives dans aucun cas. Mais un écart de 60 ne
+     tient que sur un très large catalogue : avec 80 chaînes il bloque presque
+     tout le tampon, les lots tombent à deux vidéos et le coût explose à
+     17 u/vidéo. 30 positions séparent déjà bien au-delà de ce qu'on remarque
+     en défilant, et c'est le tri par équité — la chaîne la moins servie
+     d'abord — qui assure réellement l'étendue. */
+  const CHAN_GAP = 30;
+
+  /**
+   * Écart réellement applicable. Exiger 60 positions quand il n'existe que
+   * six chaînes rend la contrainte insatisfiable : la boucle de `collect`
+   * épuisait alors son budget à chaque recharge — mesuré 700 unités pour
+   * douze recharges — et ne servait plus qu'une vidéo à la fois, faute de
+   * candidat autorisé. On demande donc au plus ce que le catalogue permet.
+   */
+  function activeGap() {
+    let pool = 0;
+    for (const id of Object.keys(State.pool)) if (State.pool[id].uploads) pool++;
+    const reachable = pool + Curated.left();
+    /* La moitié, pas la totalité : au-delà, l'écart bloque plus de chaînes que
+       le tampon n'en contient, et chaque recharge repart en quête de chaînes
+       neuves. */
+    return Math.max(2, Math.min(CHAN_GAP, Math.floor(reachable / 2)));
+  }
+
+  /** Chaînes déjà servies, des plus anciennes aux plus récentes. */
+  let recentChans = Store.get('recentChans', []);
+  /** Nombre de passages par chaîne, pour faire tourner tout le catalogue. */
+  let chanServed = Store.get('chanServed', {});
+  const gapOf = (timeline, cid) => {
+    const i = timeline.lastIndexOf(cid);
+    return i < 0 ? Infinity : timeline.length - i;
+  };
+
+  /** Chaînes du tampon que l'écart autorise à servir maintenant. */
+  function eligibleChannels() {
+    const ok = new Set();
+    const gap = activeGap();
+    for (const v of buffer) if (gapOf(recentChans, v.channelId) >= gap) ok.add(v.channelId);
+    return ok.size;
+  }
+
   function drain(want) {
-    const ordered = interleave(buffer);       // tourniquet entre chaînes
-    const out = ordered.slice(0, want);
+    const ordered = interleave(buffer);
+    const timeline = recentChans.slice();
+    const out = [], usedChans = new Set();
+
+    /* Parmi les candidats autorisés, les chaînes les moins servies d'abord.
+       Sans cette équité, l'écart seul suffisait à faire tourner en rond une
+       quinzaine de chaînes indéfiniment — mesuré : 17 chaînes pour 160 vidéos
+       alors que le catalogue en compte près de 1 800. */
+    const gap = activeGap();
+    const eligible = ordered.filter(v => gapOf(recentChans, v.channelId) >= gap);
+    eligible.sort((a, b) => (chanServed[a.channelId] || 0) - (chanServed[b.channelId] || 0));
+
+    for (const v of eligible) {
+      if (out.length >= want) break;
+      if (usedChans.has(v.channelId)) continue;                 // une seule par lot
+      if (gapOf(timeline, v.channelId) < gap) continue;         // et pas vue de trop près
+      out.push(v); usedChans.add(v.channelId); timeline.push(v.channelId);
+      chanServed[v.channelId] = (chanServed[v.channelId] || 0) + 1;
+    }
+
+    /* Un lot plus court est préférable à une répétition : la recharge
+       suivante complètera. Seule exception, un lot vide — le feed ne doit
+       jamais s'arrêter : on prend alors la chaîne vue le plus anciennement. */
+    if (!out.length && ordered.length) {
+      let best = 0;
+      for (let i = 1; i < ordered.length; i++)
+        if (gapOf(timeline, ordered[i].channelId) > gapOf(timeline, ordered[best].channelId)) best = i;
+      out.push(ordered[best]);
+      timeline.push(ordered[best].channelId);
+      chanServed[ordered[best].channelId] = (chanServed[ordered[best].channelId] || 0) + 1;
+    }
+
+    recentChans = timeline.slice(-200);
+    Store.set('recentChans', recentChans);
+    Store.set('chanServed', chanServed);
+    const taken = new Set(out.map(v => v.id));
+    const left = ordered.filter(v => !taken.has(v.id));
     buffer.length = 0;
-    buffer.push(...ordered.slice(want));
+    buffer.push(...left);
     return out;
   }
 
@@ -1849,20 +1948,23 @@ const Discovery = (() => {
    *   · une seule recherche à 100 u par recharge.
    */
   async function collect(want = 6, onProgress) {
-    /* Le tampon suffit-il déjà, et avec assez de chaînes distinctes ? */
-    if (buffer.length >= want && distinctChannels(buffer) >= MIN_CHANNELS) return drain(want);
+    /* Le tampon permet-il déjà un lot entièrement varié ? On compte les
+       chaînes *servables*, pas les chaînes présentes. */
+    if (eligibleChannels() >= want) return drain(want);
     if (Date.now() < dryUntil) return drain(want);
 
     const tried = { seed: 0, search: 0, pool: 0, chart: 0, favs: 0 };
     const startUsed = Quota.used;
     /* Budget par recharge. Sans réserve curée il faut pouvoir payer une
        recherche ; avec elle, quelques appels à 1 u suffisent. */
-    const BUDGET = Curated.left() ? 40 : COST.search + 60;
+    /* De quoi aller chercher autant de chaînes distinctes que de vidéos
+       demandées dans l'annuaire, à 3 unités chacune. */
+    const BUDGET = Curated.left() ? 70 : COST.search + 60;
     let rounds = 0, dry = 0;
 
     /* On complète jusqu'à avoir le compte ET la variété. */
-    while ((buffer.length < want || distinctChannels(buffer) < MIN_CHANNELS)
-           && rounds < 14 && dry < 4 && Quota.used - startUsed < BUDGET) {
+    while (eligibleChannels() < want
+           && rounds < 18 && dry < 4 && Quota.used - startUsed < BUDGET) {
       rounds++;
       let src = chooseSource();
       /* évite de matraquer une source stérile */
@@ -1889,18 +1991,37 @@ const Discovery = (() => {
     return drain(want);
   }
 
-  /** Mélange les sources pour que le feed n'enchaîne pas 20 vidéos d'une chaîne. */
+  /**
+   * Ordonne une liste en alternant les chaînes.
+   *
+   * L'ancienne version parcourait les paquets par index : une fois les petits
+   * épuisés, le plus gros s'écoulait d'un seul bloc en fin de course. Comme un
+   * tirage de pool rapporte jusqu'à douze vidéos d'UNE chaîne et une ou deux
+   * des autres, ce cas était la norme — mesuré : « A B C D A A A A A A A A A A A »,
+   * soit onze vidéos consécutives de la même chaîne.
+   *
+   * On sert donc à chaque tour la chaîne la plus fournie, jamais celle qui
+   * vient d'être servie : un gros paquet se répartit sur toute la longueur.
+   */
   function interleave(list) {
     const byChan = new Map();
     for (const v of shuffle(list)) {
       if (!byChan.has(v.channelId)) byChan.set(v.channelId, []);
       byChan.get(v.channelId).push(v);
     }
-    const buckets = [...byChan.values()], out = [];
-    let alive = true;
-    for (let i = 0; alive; i++) {
-      alive = false;
-      for (const b of buckets) if (b[i]) { out.push(b[i]); alive = true; }
+    const buckets = [...byChan.entries()].map(([cid, vids]) => ({ cid, vids }));
+    const out = [];
+    let last = null;
+    for (;;) {
+      let pick = null;
+      for (const b of buckets) {
+        if (!b.vids.length || b.cid === last) continue;
+        if (!pick || b.vids.length > pick.vids.length) pick = b;
+      }
+      if (!pick) pick = buckets.find(b => b.vids.length);   // plus qu'une chaîne en réserve
+      if (!pick) break;
+      out.push(pick.vids.shift());
+      last = pick.cid;
     }
     return out;
   }
@@ -1961,6 +2082,8 @@ const Discovery = (() => {
   return { collect, reinforce, interleave, hydrate, addToPool, topTerms, topCats,
            requeueSoftRejects, forgetChannel, resetBackoff, invalidateQueue, keepOnlyCurated,
            onCats, onTopics, onSeeds,
+           get gap() { return activeGap(); },
+           get gapMax() { return CHAN_GAP; },
            get buffered() { return buffer.length; },
            get bufferedChannels() { return distinctChannels(buffer); },
            get searches() { return searchesSinceReset; },
@@ -2079,7 +2202,9 @@ class Feed {
         else if (this.active >= this.items.length - 2) UI.toast('Plus rien à charger pour l\'instant');
         return;
       }
-      const ordered = Discovery.interleave(fresh);   // jamais 10 vidéos d'affilée d'une même chaîne
+      /* Pas de nouveau brassage : collect() a déjà imposé une seule vidéo
+         par chaîne et l'écart entre elles ; rebrasser le défaisait. */
+      const ordered = fresh;
       for (const v of ordered) this.append(v);
       if (first) {
         UI.hideState();
