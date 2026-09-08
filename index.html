@@ -414,7 +414,7 @@ a{color:var(--accent-2)}
   <!-- ========================= LOADING / EMPTY ========================= -->
   <div class="state" id="stateBox" hidden>
     <div class="pump" id="statePump"><i></i><i></i><i></i></div>
-    <h2 id="stateTitle">Recherche de TikTokançais…</h2>
+    <h2 id="stateTitle">Recherche de shorts français</h2>
     <p id="stateMsg"></p>
     <button class="btn ghost" id="stateBtn" hidden></button>
   </div>
@@ -1618,7 +1618,7 @@ class Feed {
   async refill(first = false) {
     if (this.loading || this.exhausted) return;
     this.loading = true;
-    if (first) UI.showState('loading', 'Recherche de TikTokançais…', 'Découverte via l\'API YouTube · filtre de langue actif');
+    if (first) UI.showState('loading', 'Recherche de short français…', 'Découverte via l\'API YouTube · filtre de langue actif');
     try {
       const batch = await this.loader(first);
       const fresh = batch.filter(v => !this.items.some(x => x.id === v.id));
