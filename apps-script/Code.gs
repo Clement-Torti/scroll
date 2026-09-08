@@ -177,20 +177,66 @@ function load() {
 
 /* ─────────────────────────── Écriture ─────────────────────────── */
 
+/**
+ * Invariant tenu ICI, et pas seulement dans le navigateur : l'onglet
+ * `channels` ne contient que des chaînes issues de l'annuaire curé, plus
+ * celles auxquelles l'utilisateur est abonné.
+ *
+ * Vider l'onglet à la main ne suffisait pas : le pool du navigateur gardait
+ * les chaînes indésirables et la poussée suivante les réécrivait aussitôt.
+ * Le client peut se tromper, être en retard d'une version ou repousser un
+ * pool encore sale — la feuille, elle, refuse. Une ligne sans provenance,
+ * comme celles écrites par les versions précédentes, est refusée.
+ */
+function keepsChannel(obj, subs) {
+  if (String(obj.src || '') === 'seed') return true;
+  return !!subs[String(obj.channelId || '')];
+}
+
+/** Identifiants des chaînes suivies, lus dans l'onglet `subscriptions`. */
+function subscribedIds() {
+  var sh = tab('subscriptions', TABLES.subscriptions);
+  var last = sh.getLastRow();
+  var out = {};
+  if (last < 2) return out;
+  var col = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) if (col[i][0]) out[String(col[i][0])] = 1;
+  return out;
+}
+
 function save(patch) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return { ok: false, error: 'busy' };
   try {
     var now = Date.now();
-    var wrote = { kv: 0, rows: 0, removed: 0 };
+    var wrote = { kv: 0, rows: 0, removed: 0, refused: 0 };
 
+    /* Les abonnements d'abord : le filtre des chaînes s'appuie dessus. */
+    if (patch.subscriptions || patch.remove_subscriptions) {
+      var rs = writeTable('subscriptions', TABLES.subscriptions,
+                          patch.subscriptions || [], patch.remove_subscriptions || []);
+      wrote.rows += rs.wrote; wrote.removed += rs.removed;
+    }
     if (patch.kv) wrote.kv = writeKV(patch.kv, now);
 
+    var subs = subscribedIds();
     for (var name in TABLES) {
+      if (name === 'subscriptions') continue;
       var upserts = patch[name] || [];
       var removes = patch['remove_' + name] || [];
-      if (!upserts.length && !removes.length) continue;
-      var res = writeTable(name, TABLES[name], upserts, removes);
+      var filter = null;
+      if (name === 'channels') {
+        var before = upserts.length;
+        upserts = upserts.filter(function (o) { return keepsChannel(o, subs); });
+        wrote.refused += before - upserts.length;
+        filter = function (row, headers) {
+          var o = {};
+          for (var c = 0; c < headers.length; c++) o[headers[c]] = row[c];
+          return keepsChannel(o, subs);
+        };
+      }
+      if (!upserts.length && !removes.length && !filter) continue;
+      var res = writeTable(name, TABLES[name], upserts, removes, filter);
       wrote.rows += res.wrote;
       wrote.removed += res.removed;
     }
@@ -253,7 +299,13 @@ function writeKV(kv, now) {
   return n;
 }
 
-function writeTable(name, headers, upserts, removes) {
+/**
+ * @param filter facultatif : (ligne, colonnes) → garder ? Appliqué AUX LIGNES
+ *        DÉJÀ PRÉSENTES, ce qui fait converger l'onglet vers son invariant à
+ *        la première écriture, sans attendre que le client demande chaque
+ *        suppression une à une.
+ */
+function writeTable(name, headers, upserts, removes, filter) {
   var sh = tab(name, headers);
   var w = headers.length;
   var last = sh.getLastRow();
@@ -262,10 +314,11 @@ function writeTable(name, headers, upserts, removes) {
   var rm = {};
   for (var i = 0; i < removes.length; i++) rm[String(removes[i])] = 1;
 
-  var kept = [], rowOf = {};
+  var kept = [], rowOf = {}, purged = 0;
   for (var r = 0; r < rows.length; r++) {
     var id = String(rows[r][0] || '');
     if (!id || rm[id]) continue;
+    if (filter && !filter(rows[r], headers)) { purged++; continue; }
     rowOf[id] = kept.length;
     kept.push(rows[r]);
   }
@@ -287,7 +340,7 @@ function writeTable(name, headers, upserts, removes) {
 
   if (last > 1) sh.getRange(2, 1, last - 1, w).clearContent();
   if (kept.length) sh.getRange(2, 1, kept.length, w).setValues(kept);
-  return { wrote: wrote, removed: Object.keys(rm).length };
+  return { wrote: wrote, removed: Object.keys(rm).length + purged };
 }
 
 /** Vide la feuille. À lancer depuis l'éditeur Apps Script uniquement. */
@@ -314,9 +367,14 @@ function resetProfile() {
 function clearChannels() {
   var sh = tab('channels', TABLES.channels);
   var last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
-  Logger.log('Onglet channels vidé (%s lignes).', Math.max(0, last - 1));
-  return last - 1;
+  var w = Math.max(sh.getLastColumn(), TABLES.channels.length);
+  var n = Math.max(0, last - 1);
+  if (n) sh.getRange(2, 1, n, w).clearContent();
+  Logger.log('Onglet channels vidé (%s lignes).', n);
+  Logger.log('Note : le navigateur garde son pool en cache. Recharge ' +
+             "l'application ensuite — la feuille refuse désormais toute chaîne " +
+             'hors annuaire, la remise en place ne peut plus se produire.');
+  return n;
 }
 
 /* ─────────────────────────── Installation ───────────────────────────

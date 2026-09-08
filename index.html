@@ -1658,9 +1658,9 @@ const Discovery = (() => {
     const p = State.pool[channelId] || { uploads: uploadsOf(channelId), score: 0, lastPulled: 0, page: null, title: '' };
     p.uploads = ch?.uploads || p.uploads || uploadsOf(channelId);
     p.title = ch?.title || p.title;
-    /* Score plafonné. `hydrate` appelle addToPool pour chaque vidéo acceptée :
-       une chaîne très fournie atteignait 438 quand les autres restaient à 1,2,
-       et le tirage pondéré ne servait plus qu'elle. */
+    /* Conservé à titre indicatif dans la feuille, mais il n'intervient plus
+       dans aucune sélection : les tirages sont uniformes. Plafonné pour rester
+       lisible. */
     p.score = Math.min(8, (p.score || 0) + (conf || .5));
     if (src === 'seed' || !p.src) p.src = src || 'auto';
     State.pool[channelId] = p;
@@ -1698,14 +1698,12 @@ const Discovery = (() => {
       const topical = cands.filter(([, p]) => (p.cats || []).some(c => wanted.has(c)));
       if (topical.length >= 3) cands = topical;
     }
-    const chosen = weighted(cands.map(([id, p]) => {
-      const rest = Math.min(3, (now - (p.lastPulled || 0)) / 6e5);
-      const fav  = State.favorites[id] ? 2 : 1;
-      const like = 1 + Math.min(3, (State.interests.chans[id] || 0));
-      /* Une chaîne dont l'annuaire annonce un thème retenu passe devant. */
-      const topical = wanted.size && (p.cats || []).some(c => wanted.has(c)) ? 2.5 : 1;
-      return [id, (p.score || .3) * (1 + rest) * fav * like * topical];
-    }));
+    /* Tirage UNIFORME. La version précédente pondérait par le score cumulé,
+       l'ancienneté du dernier tirage, le statut de favori et les « j'aime » :
+       une chaîne atteignant 438 quand les autres restaient à 1,2 monopolisait
+       le feed. Aucune chaîne n'est privilégiée — la variété est assurée par
+       l'écart imposé, pas par une loterie truquée. */
+    const chosen = pick(cands.map(([id]) => id));
     const p = State.pool[chosen];
     p.lastPulled = now;
     let data;
@@ -1734,7 +1732,10 @@ const Discovery = (() => {
   async function fromSeeds() {
     const cands = Curated.pending(onTopics());
     if (!cands.length) return [];
-    const handle = weighted(cands.map(h => [h, Curated.scoreOf(h)]));
+    /* Uniforme également : le palier d'audience (Titan, Solide, Ascension)
+       ne donne aucune priorité. Une chaîne de 12 000 abonnés a exactement
+       autant de chances qu'une de dix millions. */
+    const handle = pick(cands);
     const seed = State.seeds[handle];
     if (!seed) return [];
     /* Marqué avant l'appel : un handle mort ou renommé ne doit pas être
@@ -1894,8 +1895,6 @@ const Discovery = (() => {
 
   /** Chaînes déjà servies, des plus anciennes aux plus récentes. */
   let recentChans = Store.get('recentChans', []);
-  /** Nombre de passages par chaîne, pour faire tourner tout le catalogue. */
-  let chanServed = Store.get('chanServed', {});
   const gapOf = (timeline, cid) => {
     const i = timeline.lastIndexOf(cid);
     return i < 0 ? Infinity : timeline.length - i;
@@ -1914,20 +1913,20 @@ const Discovery = (() => {
     const timeline = recentChans.slice();
     const out = [], usedChans = new Set();
 
-    /* Parmi les candidats autorisés, les chaînes les moins servies d'abord.
-       Sans cette équité, l'écart seul suffisait à faire tourner en rond une
-       quinzaine de chaînes indéfiniment — mesuré : 17 chaînes pour 160 vidéos
-       alors que le catalogue en compte près de 1 800. */
+    /* Ordre issu d'`interleave`, qui commence par mélanger : le choix parmi
+       les candidats autorisés est donc uniforme, sans aucune préférence.
+       Un tri par nombre de passages a été essayé puis retiré — mesuré sur
+       187 vidéos, il ne changeait ni le nombre de chaînes (37), ni le maximum
+       par chaîne (6), ni le coût, et raccourcissait l'écart réellement obtenu
+       de 30 à 14 positions. */
     const gap = activeGap();
     const eligible = ordered.filter(v => gapOf(recentChans, v.channelId) >= gap);
-    eligible.sort((a, b) => (chanServed[a.channelId] || 0) - (chanServed[b.channelId] || 0));
 
     for (const v of eligible) {
       if (out.length >= want) break;
       if (usedChans.has(v.channelId)) continue;                 // une seule par lot
       if (gapOf(timeline, v.channelId) < gap) continue;         // et pas vue de trop près
       out.push(v); usedChans.add(v.channelId); timeline.push(v.channelId);
-      chanServed[v.channelId] = (chanServed[v.channelId] || 0) + 1;
     }
 
     /* Un lot plus court est préférable à une répétition : la recharge
@@ -1939,12 +1938,10 @@ const Discovery = (() => {
         if (gapOf(timeline, ordered[i].channelId) > gapOf(timeline, ordered[best].channelId)) best = i;
       out.push(ordered[best]);
       timeline.push(ordered[best].channelId);
-      chanServed[ordered[best].channelId] = (chanServed[ordered[best].channelId] || 0) + 1;
     }
 
     recentChans = timeline.slice(-200);
     Store.set('recentChans', recentChans);
-    Store.set('chanServed', chanServed);
     const taken = new Set(out.map(v => v.id));
     const left = ordered.filter(v => !taken.has(v.id));
     buffer.length = 0;

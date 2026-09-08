@@ -191,9 +191,8 @@ Tres mecanismos, porque ninguno basta solo:
 2. **Un solo vídeo por canal y por lote**, con memoria **entre** lotes. Ni el
    mejor orden evita la serie si un lote de 8 contiene 12 vídeos de un canal:
    el sobrante espera en el búfer, no se pierde.
-3. **Reparto equitativo**: entre los candidatos permitidos, primero el canal
-   **menos servido**. Sin esto, el hueco solo hacía girar en círculo unos 17
-   canales teniendo 1798 disponibles.
+3. **Sorteo uniforme**: entre los candidatos permitidos, `interleave` empieza
+   mezclando, así que la elección no tiene ninguna preferencia.
 
 El hueco mínimo es de **30 posiciones**, y se **adapta** a los canales
 disponibles (`min(30, alcanzables/2)`). Ese ajuste no es cosmético: con hueco
@@ -201,6 +200,26 @@ fijo de 60 y solo 80 canales, la restricción se vuelve imposible, los lotes
 caen a 2 vídeos y el coste se dispara a **17 u/vídeo**. Con 30 adaptativo:
 **1,06 u/vídeo**, 37 canales sobre 160 vídeos, máximo 5 pasadas por canal, y
 **nunca dos seguidas**.
+
+### Nada de puntuaciones
+
+**Ningún canal está privilegiado.** El sorteo de canal, tanto del pool como
+del catálogo, es **uniforme**. Antes ponderaba por puntuación acumulada,
+antigüedad del último tirón, condición de favorito y «me gusta» — y un canal
+que llegaba a 438 mientras los demás estaban en 1,2 monopolizaba el feed. El
+nivel de audiencia tampoco cuenta: un canal de 12 000 suscriptores tiene
+exactamente las mismas probabilidades que uno de diez millones.
+
+El campo `score` sigue en la hoja a título informativo, pero **no interviene en
+ninguna selección**.
+
+También probé un reparto rotatorio (primero el canal menos servido) y lo
+**retiré**: medido sobre 187 vídeos no cambiaba nada — 37 canales, máximo 6
+pasadas, mismo coste — y acortaba el hueco real de 30 a 14 posiciones. La
+variedad la da el hueco impuesto, no una lotería trucada.
+
+Lo único que sigue ponderado es la elección de **qué fuente** consultar
+(`seed`, `pool`, `search`…), que es una decisión de coste, no de contenido.
 
 Además, una selección explícita de temas ahora **restringe** el pool, no solo
 lo pondera — si no, los canales descubiertos bajo los temas anteriores seguían
