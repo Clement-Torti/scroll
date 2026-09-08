@@ -1998,6 +1998,8 @@ class Feed {
     this.primed = new Set();      // videoId dont le tampon est amorcé
     this.pbTimer = 0;             // rattrapage d'amorçage
     this.activePlaying = false;   // la vidéo affichée a-t-elle démarré ?
+    this.userPaused = false;      // pause demandée par l'utilisateur ?
+    this.unmutedAt = 0;           // instant du dernier dé-sourdinage
     this.active = -1;
     this.loading = false;
     this.exhausted = false;
@@ -2146,6 +2148,8 @@ class Feed {
     if (prev) { const p = this.players.get(prev.id); if (p) { try { p.pauseVideo(); } catch {} } }
     this.active = idx;
     this.activePlaying = false;
+    this.userPaused = false;
+    this.unmutedAt = 0;
     const v = this.items[idx];
     if (!v) return;
     for (const [id, el] of this.slides) el.classList.toggle('live', id === v.id);
@@ -2286,6 +2290,7 @@ class Feed {
       if (this.items[this.active]?.id === v.id) {
         this.activePlaying = true;
         poster && (poster.style.opacity = '0');
+        this.soundOn(v.id);            // la lecture tourne : le son peut suivre
         /* La vidéo en cours tourne : la suivante peut être amorcée sans
            lui voler de débit. */
         /* 250 ms, pas 1200 : sur des vidéos de 30 s on swipe vite, et un
@@ -2306,6 +2311,18 @@ class Feed {
         try { e.target.pauseVideo(); } catch {}
       }
     }
+    /* Certains navigateurs mettent la vidéo en pause quand on la dé-sourdine
+       sans activation dans l'iframe. On le détecte et on repart en sourdine
+       plutôt que de laisser un écran figé. */
+    if (st === YT.PlayerState.PAUSED && this.items[this.active]?.id === v.id
+        && !this.userPaused && this.unmutedAt && Date.now() - this.unmutedAt < 1500) {
+      this.unmutedAt = 0;
+      State.settings.sound = false;
+      save.settings();
+      try { e.target.mute(); e.target.playVideo(); } catch {}
+      UI.soundBlocked();
+    }
+
     if (st === YT.PlayerState.ENDED && this.items[this.active]?.id === v.id) {
       if (State.settings.loopSingle) { try { e.target.seekTo(0, true); e.target.playVideo(); } catch {} }
       else if (State.settings.autoAdvance) this.next();
@@ -2322,6 +2339,19 @@ class Feed {
     if (this.items[this.active]?.id === v.id) setTimeout(() => this.next(), 700);
   }
 
+  /**
+   * Lance la vidéo affichée. TOUJOURS en sourdine.
+   *
+   * Une demande de lecture non muette est refusée par la politique d'autoplay
+   * du navigateur : le geste de l'utilisateur a eu lieu sur notre page, pas
+   * dans l'iframe YouTube, qui reste donc sans activation. L'ancienne version
+   * appelait `unMute()` juste avant `playVideo()` — la lecture ne démarrait
+   * jamais, le lecteur restait sur son indicateur de chargement, et il
+   * suffisait d'un appui sur le bouton du son (donc d'un geste) pour la
+   * débloquer. Le son est rétabli après coup, dans `soundOn`, quand la
+   * lecture est confirmée : dé-sourdiner une vidéo qui tourne déjà ne
+   * retombe pas sous la même règle.
+   */
   playActive() {
     const v = this.items[this.active];
     if (!v) return;
@@ -2329,18 +2359,31 @@ class Feed {
     const p = this.players.get(v.id);
     if (!p?.playVideo) return;
 
-    const sound = () => { try { if (State.settings.sound) { p.unMute(); p.setVolume(100); } else p.mute(); } catch {} };
-
-    /* Idempotent. refill(), UI.tab() → resume() et onReady() réclamaient tous
-       trois la lecture de la même slide : playVideo() partait donc trois fois,
-       et chaque appel pendant la mise en tampon la fait repartir de zéro —
-       la première vidéo mettait presque une seconde de plus à démarrer. */
+    /* Idempotent : refill(), UI.tab() → resume() et onReady() réclament tous
+       trois la lecture de la même slide, et relancer playVideo() pendant la
+       mise en tampon la fait repartir de zéro. */
     let st = null;
     try { st = p.getPlayerState(); } catch {}
-    if (st === YT.PlayerState.PLAYING || st === YT.PlayerState.BUFFERING) { sound(); return; }
+    if (st === YT.PlayerState.PLAYING) { this.soundOn(v.id); return; }
+    if (st === YT.PlayerState.BUFFERING) return;
 
-    sound();
-    try { p.playVideo(); } catch {}
+    try { p.mute(); p.playVideo(); } catch {}
+  }
+
+  /** Rétablit le son sur un lecteur déjà en lecture (et coupe les autres). */
+  soundOn(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    const wanted = State.settings.sound && this.items[this.active]?.id === id;
+    try {
+      if (wanted) {
+        /* Horodaté AVANT l'appel : le navigateur peut mettre la vidéo en
+           pause dans la foulée immédiate, et le filet de sécurité doit
+           pouvoir reconnaître cette pause comme la conséquence du son. */
+        this.unmutedAt = Date.now();
+        p.unMute(); p.setVolume(100);
+      } else p.mute();
+    } catch {}
   }
 
   /* Pas de retour visuel maison : `controls=0` masque la barre mais le
@@ -2350,6 +2393,7 @@ class Feed {
     if (!p?.getPlayerState) return;
     try {
       const playing = p.getPlayerState() === YT.PlayerState.PLAYING;
+      this.userPaused = playing;
       playing ? p.pauseVideo() : p.playVideo();
     } catch {}
   }
@@ -2469,11 +2513,20 @@ class Feed {
   }
 
   applySound() {
+    const activeId = this.items[this.active]?.id;
     for (const [id, p] of this.players) {
-      try {
-        if (State.settings.sound && this.items[this.active]?.id === id) { p.unMute(); p.setVolume(100); }
-        else p.mute();
-      } catch {}
+      if (id === activeId) continue;
+      try { p.mute(); } catch {}
+    }
+    if (activeId) {
+      const p = this.players.get(activeId);
+      let st = null;
+      try { st = p?.getPlayerState(); } catch {}
+      /* Si la vidéo tourne, on rétablit simplement le son. Sinon on la relance
+         en sourdine : `soundOn` prendra le relais à la confirmation de
+         lecture. Dé-sourdiner un lecteur à l'arrêt le laissait figé. */
+      if (st === YT.PlayerState.PLAYING) this.soundOn(activeId);
+      else { this.userPaused = false; try { p.mute(); p.playVideo(); } catch {} }
     }
     for (const s of this.slides.values()) {
       const b = $('.snd', s);
@@ -2991,6 +3044,13 @@ const UI = {
     save.settings();
     $('#nudge').hidden = on;
     Object.values(feeds).forEach(f => f.applySound());
+  },
+
+  /** Le navigateur a refusé le son : on le dit, sans bloquer la lecture. */
+  soundBlocked() {
+    $('#nudge').hidden = false;
+    this.toast('Le son a été refusé par le navigateur — appuie sur la vidéo puis réessaie', true);
+    Object.values(feeds).forEach(f => f.applySound?.());
   },
 
   onActiveChange(feed, v) {

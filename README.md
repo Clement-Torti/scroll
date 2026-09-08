@@ -377,7 +377,12 @@ chaînes y Réglages, con las estadísticas del filtro y el consumo de cuota.
 ## Límites conocidos
 
 - El navegador solo permite autoplay **silenciado**; hay que tocar una vez
-  «Appuie pour le son» (igual que TikTok o Instagram en web).
+  «Appuie pour le son» (igual que TikTok o Instagram en web). La reproducción
+  arranca **siempre** en silencio y el sonido se aplica *después* de confirmar
+  que la vídeo rueda: pedir reproducción no silenciada la bloquea, porque tu
+  toque ocurre en la página y no dentro del iframe de YouTube, que no recibe
+  esa activación. Si el navegador aun así la pausa, la app vuelve a silencio y
+  lo dice, en vez de dejar una pantalla congelada.
 - El desenfoque de fondo (`backdrop-filter`) se aplica **solo a la slide
   visible**. Aplicado a todas, el compositor mezclaba dos capas desenfocadas
   por slide durante el scroll, y ahí se perdía la fluidez. El degradado, que
