@@ -358,6 +358,16 @@ a{color:var(--accent-2)}
       </ol>
       <p class="note">Quota gratuit : 10 000 unités/jour. L'app est optimisée pour en consommer le moins possible (voir « Quota » dans les réglages).</p>
     </div>
+
+    <div class="card">
+      <h3>Profil dans une Google Sheet — facultatif</h3>
+      <p class="note" style="margin:0 0 11px">Sans ça l'application fonctionne, mais le profil (chaînes découvertes, abonnements, thèmes) ne vit que dans ce navigateur.</p>
+      <div class="field">
+        <input id="setupCloudUrl" placeholder="https://script.google.com/macros/s/.../exec" spellcheck="false" autocomplete="off">
+        <input id="setupCloudToken" type="password" placeholder="jeton partagé (TOKEN dans Code.gs)" autocomplete="off">
+      </div>
+      <p class="note">Renseigné <em>ici</em> plutôt que dans les réglages, le profil est chargé avant la première recharge : sur un nouvel appareil le feed démarre sur tes chaînes déjà connues, pour environ 2 unités au lieu d'une recherche à 100.</p>
+    </div>
   </section>
 
   <!-- ========================= TOP BAR ========================= -->
@@ -2678,11 +2688,19 @@ async function submitKey() {
   const k = input.value.trim();
   err.textContent = '';
   if (!/^AIza[\w-]{20,}$/.test(k)) { err.textContent = 'Une clé YouTube commence par « AIza » et fait ~39 caractères.'; return; }
+  /* Synchronisation facultative : les deux champs vont ensemble. */
+  const cu = $('#setupCloudUrl').value.trim(), ct = $('#setupCloudToken').value.trim();
+  if ((cu || ct) && !(cu && ct)) { err.textContent = 'Pour la synchronisation, il faut l\'URL *et* le jeton (ou aucun des deux).'; return; }
+  if (cu && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(cu)) {
+    err.textContent = 'URL attendue : https://script.google.com/macros/s/.../exec'; return;
+  }
+
   btn.disabled = true; btn.textContent = 'Vérification…';
   State.key = k;
   try {
     await Api.call('videoCategories', { part: 'snippet', regionCode: 'FR', hl: 'fr' });  // 1 u
     Store.set('key', k);
+    if (cu && ct) { State.cloud = { url: cu, token: ct }; save.cloud(); }
     $('#setup').hidden = true;
     boot();
   } catch (e) {
@@ -2733,7 +2751,13 @@ async function boot() {
 
 /* ---- démarrage ---- */
 if (State.key) { $('#setup').hidden = true; boot(); }
-else { $('#setup').hidden = false; $('#keyInput').focus(); }
+else {
+  $('#setup').hidden = false;
+  /* « Changer la clé » ne doit pas faire ressaisir la config de synchro. */
+  $('#setupCloudUrl').value = State.cloud.url || '';
+  $('#setupCloudToken').value = State.cloud.token || '';
+  $('#keyInput').focus();
+}
 </script>
 </body>
 </html>
