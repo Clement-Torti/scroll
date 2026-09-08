@@ -6,7 +6,18 @@
 <meta name="theme-color" content="#000000">
 <meta name="description" content="Un feed vertical infini de Shorts YouTube 100% en français.">
 <title>Shorts FR</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇫🇷</text></svg>">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<!-- Écran d'accueil iOS : l'icône doit être un PNG opaque (Safari ignore le SVG
+     pour apple-touch-icon), et `black-translucent` fait passer le contenu sous
+     la barre d'état — d'où les marges `env(safe-area-inset-*)` du CSS. -->
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shorts FR">
 <style>
 /* ============================ TOKENS ============================ */
 :root{
@@ -149,16 +160,6 @@ a{color:var(--accent-2)}
 }
 .tapzone{position:absolute;inset:0;z-index:5}
 
-/* play/pause pulse */
-.pulse{
-  position:absolute;top:50%;left:50%;translate:-50% -50%;z-index:8;
-  width:74px;height:74px;border-radius:50%;display:grid;place-items:center;
-  background:rgba(0,0,0,.42);backdrop-filter:blur(6px);
-  opacity:0;transition:opacity .25s,transform .25s var(--ease);pointer-events:none;transform:translate(-50%,-50%) scale(.8)
-}
-.pulse.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
-.pulse svg{width:30px;height:30px;fill:#fff}
-
 /* buffering */
 .spin{
   position:absolute;top:50%;left:50%;margin:-13px 0 0 -13px;z-index:7;
@@ -290,6 +291,26 @@ a{color:var(--accent-2)}
 .empty{text-align:center;padding:52px 20px;color:var(--text-3)}
 .empty .big{font-size:34px;margin-bottom:10px}
 
+/* sélection de thèmes */
+.grid{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 4px}
+.pill{
+  padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--text-2);
+  transition:background .15s,color .15s,border-color .15s;
+}
+.pill.on{background:var(--accent);border-color:transparent;color:#fff;font-weight:700}
+.pill .x{opacity:.6;margin-left:5px;font-weight:700}
+.addrow{display:flex;gap:8px;margin-top:10px}
+.addrow input{
+  flex:1;min-width:0;padding:11px 13px;border-radius:var(--r-md);
+  background:var(--surface-2);border:1px solid var(--line-2);font-size:13.5px;
+}
+.addrow input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--text-3)}
+.dot.ok{background:var(--accent-2)} .dot.error{background:#ff4d68}
+.dot.syncing{background:var(--warn);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+
 /* toast */
 #toast{
   position:absolute;z-index:70;left:50%;translate:-50% 0;bottom:calc(84px + var(--safe-b));
@@ -376,6 +397,18 @@ a{color:var(--accent-2)}
       <button class="mini" id="subsRefresh">Actualiser</button>
     </div>
     <div class="pbody" id="subsList"></div>
+  </aside>
+
+  <!-- ========================= TOPICS PANEL ========================= -->
+  <aside class="panel" id="panelTopics" hidden>
+    <div class="phead">
+      <button class="iconbtn" data-close="panelTopics" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <h2>Centres d'intérêt</h2>
+      <button class="mini" id="topicsClear">Tout effacer</button>
+    </div>
+    <div class="pbody" id="topicsBody"></div>
   </aside>
 
   <!-- ========================= SETTINGS PANEL ========================= -->
@@ -508,21 +541,37 @@ const State = {
   ccache    : Store.get('ccache', {}),      // channelId → objet chaîne normalisé
   usedSeeds : Store.get('usedSeeds', []),
   stats     : Store.get('stats', { fetched: 0, keptFr: 0, rejectedLang: 0, rejectedDur: 0, rejectedOther: 0 }),
+  /* Centres d'intérêt choisis par l'utilisateur (cf. section THÈMES). */
+  topics    : Store.get('topics', { cats: {}, topics: {}, seeds: [], only: false }),
+  catList   : Store.get('catList', []),          // videoCategories.list, en cache
+  /* Adresse de l'application web Apps Script. La clé API YouTube, elle, ne
+     quitte jamais le navigateur : elle n'est pas synchronisée. */
+  cloud     : Store.get('cloud', { url: '', token: '' }),
 };
+
+/** Renseigné par le module Cloud (déclaré plus bas) : chaque écriture locale
+    signale la section modifiée pour être poussée vers la feuille. */
+let onProfileChange = () => {};
 const seenSet = new Set(State.seen);
 
 const save = {
-  settings : () => Store.set('settings',  State.settings),
-  favorites: () => Store.set('favorites', State.favorites),
-  liked    : () => Store.set('liked',     State.liked),
-  interests: () => Store.set('interests', State.interests),
-  chanLang : () => Store.set('chanLang',  State.chanLang),
-  pool     : () => Store.set('pool',      trimPool()),
-  stats    : () => Store.set('stats',     State.stats),
-  seen     : () => { if (State.seen.length > 4000) State.seen = State.seen.slice(-3000); Store.set('seen', State.seen); },
+  settings : () => touch('settings',  Store.set('settings',  State.settings)),
+  favorites: () => touch('favorites', Store.set('favorites', State.favorites)),
+  liked    : () => touch('liked',     Store.set('liked',     State.liked)),
+  interests: () => touch('interests', Store.set('interests', State.interests)),
+  chanLang : () => touch('chanLang',  Store.set('chanLang',  State.chanLang)),
+  pool     : () => touch('pool',      Store.set('pool',      trimPool())),
+  stats    : () => touch('stats',     Store.set('stats',     State.stats)),
+  topics   : () => touch('topics',    Store.set('topics',    State.topics)),
+  seen     : () => { if (State.seen.length > 4000) State.seen = State.seen.slice(-3000);
+                     return touch('seen', Store.set('seen', State.seen)); },
+  /* Caches purement techniques : jamais synchronisés, ils se reconstruisent. */
   vcache   : () => Store.set('vcache',    trimCache('vcache', 900)),
   ccache   : () => Store.set('ccache',    trimCache('ccache', 400)),
+  cloud    : () => Store.set('cloud',     State.cloud),
+  catList  : () => Store.set('catList',   State.catList),
 };
+const touch = (section, v) => { onProfileChange(section); return v; };
 function markSeen(id) { if (seenSet.has(id)) return; seenSet.add(id); State.seen.push(id); save.seen(); }
 /** Garde les N entrées de cache les plus récemment touchées. */
 function trimCache(which, max) {
@@ -1042,6 +1091,41 @@ pêche technique|chasse nature|escalade bloc|surf vague|ski neige|skate trick|
 boxe technique|judo karaté|self défense|course à pied|natation technique`
   .split('|').map(s => s.trim()).filter(Boolean);
 
+/* ══════════════════════════════════════════════════════════════════════
+   THÈMES CONFIGURABLES
+   Trois axes réellement exploitables côté API :
+     · `videoCategoryId` sur search.list — catégories officielles, libellés
+       localisés via videoCategories.list(regionCode=FR, hl=fr). Impose type=video.
+     · `topicId` sur search.list — depuis la fin de Freebase (27/02/2017) YouTube
+       n'accepte plus qu'un petit jeu d'identifiants curés, reproduit ci-dessous.
+     · `topicDetails.topicCategories` (URLs Wikipédia) — non interrogeable, mais
+       exploitable pour *apprendre* les goûts. `topicIds`/`relevantTopicIds` sont
+       morts depuis le 10/11/2016 et ne renvoient plus rien.
+   ══════════════════════════════════════════════════════════════════════ */
+const TOPICS = [
+  ['Musique', [['/m/04rlf','Musique'],['/m/0glt670','Hip-hop'],['/m/064t9','Pop'],
+    ['/m/06by7','Rock'],['/m/02lkt','Électro'],['/m/03_d0','Jazz'],['/m/0ggq0m','Classique'],
+    ['/m/06j6l','R&B'],['/m/01lyv','Country'],['/m/06cqb','Reggae'],['/m/0g293','Musique latine'],
+    ['/m/05rwpb','Musique indépendante'],['/m/0gywn','Soul']]],
+  ['Gaming', [['/m/0bzvm2','Jeux vidéo'],['/m/025zzc','Action'],['/m/02ntfj','Action-aventure'],
+    ['/m/0b1vjn','Casual'],['/m/04q1x3q','Puzzle'],['/m/01sjng','Course'],
+    ['/m/0403l3g','Jeu de rôle'],['/m/021bp2','Simulation'],['/m/022dc6','Sport'],
+    ['/m/03hf_rm','Stratégie'],['/m/02hygl','Jeu musical']]],
+  ['Sport', [['/m/06ntj','Sport'],['/m/02vx4','Football'],['/m/018w8','Basket'],
+    ['/m/07bs0','Tennis'],['/m/01cgz','Boxe'],['/m/01h7lh','MMA'],['/m/0410tth','Sport motorisé'],
+    ['/m/03tmr','Hockey sur glace'],['/m/037hz','Golf'],['/m/018jz','Baseball'],
+    ['/m/0jm_','Football américain'],['/m/07_53','Volley'],['/m/09xp_','Cricket']]],
+  ['Divertissement', [['/m/02jjt','Divertissement'],['/m/09kqc','Humour'],['/m/02vxn','Cinéma'],
+    ['/m/0f2f9','Séries TV'],['/m/05qjc','Arts du spectacle'],['/m/066wd','Catch']]],
+  ['Style de vie', [['/m/019_rr','Style de vie'],['/m/02wbm','Cuisine'],['/m/027x7n','Fitness'],
+    ['/m/032tl','Mode'],['/m/041xxh','Beauté'],['/m/07c1v','Technologie'],['/m/07bxq','Voyage'],
+    ['/m/07yv9','Véhicules'],['/m/068hy','Animaux'],['/m/03glg','Loisirs']]],
+  ['Société', [['/m/098wr','Société'],['/m/09s1f','Business'],['/m/0kt51','Santé'],
+    ['/m/05qt0','Politique'],['/m/06bvp','Religion'],['/m/01h6rj','Militaire']]],
+  ['Savoir', [['/m/01k8wb','Connaissance']]],
+];
+const TOPIC_LABEL = Object.fromEntries(TOPICS.flatMap(g => g[1]));
+
 const CATEGORIES = ['1','2','10','15','17','20','22','23','24','25','26','27','28'];
 const CAT_NAMES = { '1':'Cinéma','2':'Auto','10':'Musique','15':'Animaux','17':'Sport','20':'Gaming',
   '22':'Vlog','23':'Humour','24':'Divertissement','25':'Actu','26':'Tuto','27':'Éducation','28':'Science' };
@@ -1070,27 +1154,51 @@ const Discovery = (() => {
   const topTerms = n => Object.entries(State.interests.terms).sort((a, b) => b[1] - a[1]).slice(0, n).map(e => e[0]);
   const topCats  = n => Object.entries(State.interests.cats).sort((a, b) => b[1] - a[1]).slice(0, n).map(e => e[0]);
 
+  /* ---------- Thèmes retenus par l'utilisateur ---------- */
+  const onCats   = () => Object.keys(State.topics.cats).filter(k => State.topics.cats[k]);
+  const onTopics = () => Object.keys(State.topics.topics).filter(k => State.topics.topics[k]);
+  const onSeeds  = () => (State.topics.seeds || []).filter(Boolean);
+
   /* ---------- Fabrication d'une requête ---------- */
   function buildQuery() {
     const terms = topTerms(14);
-    const exploit = terms.length >= 3 && Math.random() < .55;
-    let q;
-    if (exploit) {
+    const mine = onSeeds();
+    const only = !!State.topics.only;
+
+    /* Trois sources de mots-clés, par ordre de priorité décroissante :
+       ceux saisis par l'utilisateur, ceux appris de ses « j'aime », le
+       catalogue de semences intégré. */
+    let q, label;
+    if (mine.length && (only || Math.random() < .55)) {
+      q = pick(mine); label = 'mes mots-clés';
+    } else if (!only && terms.length >= 3 && Math.random() < .5) {
       const a = pick(terms);
       q = Math.random() < .35 ? `${a} ${pick(SEEDS)}` : a;
+      label = 'intérêts appris';
     } else {
-      const unused = SEEDS.filter(s => !State.usedSeeds.includes(s));
+      const unused = SEEDS.filter(x => !State.usedSeeds.includes(x));
       q = pick(unused.length > 12 ? unused : SEEDS);
       State.usedSeeds.push(q);
       if (State.usedSeeds.length > SEEDS.length - 10) State.usedSeeds = State.usedSeeds.slice(-40);
       Store.set('usedSeeds', State.usedSeeds);
+      label = 'exploration';
     }
+
+    /* Filtre thématique. `videoCategoryId` et `topicId` peuvent coexister,
+       mais les cumuler restreint trop : on en tire un des deux. */
+    const cats = onCats(), tops = onTopics();
+    const extra = {};
+    if (cats.length && (only || Math.random() < .5)) extra.videoCategoryId = pick(cats);
+    else if (tops.length && (only || Math.random() < .5)) extra.topicId = pick(tops);
+    if (extra.videoCategoryId) label += ` · ${CAT_NAMES[extra.videoCategoryId] || extra.videoCategoryId}`;
+    else if (extra.topicId) label += ` · ${TOPIC_LABEL[extra.topicId] || extra.topicId}`;
+
     const days = pick(WINDOWS);
     return {
       q: q + pick(MODIFIERS),
       order: pick(ORDERS),
       publishedAfter: days ? new Date(Date.now() - days * 86400e3).toISOString() : null,
-      label: exploit ? 'intérêts' : 'exploration',
+      label, extra,
     };
   }
 
@@ -1103,7 +1211,7 @@ const Discovery = (() => {
       mêmes vidéos et gaspiller des tours de boucle. */
   const served = new Set();
 
-  async function hydrate(ids, sourceLabel) {
+  async function hydrate(ids, sourceLabel, why) {
     ids = uniq(ids).filter(id => id && !seenSet.has(id) && !inflight.has(id) &&
                                  !softReject.has(id) && !served.has(id));
     if (!ids.length) return [];
@@ -1160,7 +1268,7 @@ const Discovery = (() => {
         if (ver.hard || ver.conf >= .8) Lang.learn(v.channelId, true, ver.hard);
         State.stats.keptFr++;
         served.add(v.id);
-        out.push(Object.assign({}, v, { lang: ver, source: sourceLabel, channel: ch || null }));
+        out.push(Object.assign({}, v, { lang: ver, source: sourceLabel, why: why || '', channel: ch || null }));
         /* toute chaîne validée entre dans le pool de découverte */
         addToPool(v.channelId, ch, ver.conf);
       }
@@ -1184,8 +1292,8 @@ const Discovery = (() => {
 
   /** search.list — 100 u. Découvre vidéos *et* chaînes. */
   async function fromSearch() {
-    const { q, order, publishedAfter, label } = buildQuery();
-    const data = await Api.search({ q, order, publishedAfter });
+    const { q, order, publishedAfter, label, extra } = buildQuery();
+    const data = await Api.search(Object.assign({ q, order, publishedAfter }, extra));
     const ids = (data.items || []).map(i => i.id?.videoId).filter(Boolean);
     /* les chaînes croisées entrent au pool même si leurs vidéos sont écartées */
     for (const it of data.items || []) {
@@ -1193,7 +1301,7 @@ const Discovery = (() => {
       if (cid && !State.pool[cid]) addToPool(cid, null, .25);
     }
     searchesSinceReset++;
-    return hydrate(ids, `« ${q.trim()} »`);
+    return hydrate(ids, `« ${q.trim()} »`, label);
   }
 
   /** playlistItems sur les uploads d'une chaîne du pool — 1 u. */
@@ -1227,8 +1335,10 @@ const Discovery = (() => {
 
   /** Classement mostPopular France — 1 u. Peu de Shorts mais 100% FR-région. */
   async function fromChart() {
-    const cats = topCats(3);
-    const cat = Math.random() < .5 && cats.length ? pick(cats) : pick(CATEGORIES);
+    const chosen = onCats();
+    const learned = topCats(3);
+    const cat = chosen.length ? pick(chosen)
+              : (Math.random() < .5 && learned.length ? pick(learned) : pick(CATEGORIES));
     let data;
     try { data = await Api.chart({ videoCategoryId: cat }); }
     catch (e) { if (e.reason === 'quotaExceeded') throw e; return []; }
@@ -1352,7 +1462,7 @@ const Discovery = (() => {
   const forgetChannel = cid => { for (const id of [...served]) if (State.vcache[id]?.channelId === cid) served.delete(id); };
 
   return { collect, reinforce, interleave, hydrate, addToPool, topTerms, topCats,
-           requeueSoftRejects, forgetChannel, resetBackoff,
+           requeueSoftRejects, forgetChannel, resetBackoff, onCats, onTopics, onSeeds,
            get searches() { return searchesSinceReset; },
            get softRejects() { return softReject.size; } };
 })();
@@ -1388,9 +1498,6 @@ const ICON = {
   sndOn : `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`,
   sndOff: `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>`,
   share : `<svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>`,
-  play  : `<svg viewBox="0 0 24 24"><path d="M7 4.5 20 12 7 19.5z"/></svg>`,
-  pause : `<svg viewBox="0 0 24 24"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>`,
-  next  : `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>`,
 };
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1482,7 +1589,6 @@ class Feed {
       <div class="spin"></div>
       <div class="veil"></div>
       <div class="tapzone"></div>
-      <div class="pulse">${ICON.play}</div>
       <div class="info">
         <div class="chan">
           <img src="${esc(ch.thumb || '')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
@@ -1650,19 +1756,15 @@ class Feed {
     } catch {}
   }
 
+  /* Pas de retour visuel maison : `controls=0` masque la barre mais le
+     lecteur YouTube affiche toujours son propre bouton central en pause. */
   togglePlay(v) {
-    const p = this.players.get(v.id), s = this.slides.get(v.id);
+    const p = this.players.get(v.id);
     if (!p?.getPlayerState) return;
-    let playing = false;
-    try { playing = p.getPlayerState() === YT.PlayerState.PLAYING; } catch {}
-    try { playing ? p.pauseVideo() : p.playVideo(); } catch {}
-    const pulse = $('.pulse', s);
-    if (pulse) {
-      pulse.innerHTML = playing ? ICON.pause : ICON.play;
-      pulse.classList.add('on');
-      clearTimeout(this._pt);
-      this._pt = setTimeout(() => pulse.classList.remove('on'), 480);
-    }
+    try {
+      const playing = p.getPlayerState() === YT.PlayerState.PLAYING;
+      playing ? p.pauseVideo() : p.playVideo();
+    } catch {}
   }
 
   next() { this.scrollToIndex(this.active + 1); }
@@ -1698,7 +1800,7 @@ class Feed {
     const on = !State.liked[v.id];
     if (force && !on) return;
     if (on) { State.liked[v.id] = { title: v.title, channelId: v.channelId, ts: Date.now() }; Discovery.reinforce(v, 2.5); Lang.learn(v.channelId, true, false); Discovery.addToPool(v.channelId, v.channel, 1.5); save.pool(); }
-    else delete State.liked[v.id];
+    else { delete State.liked[v.id]; Cloud.drop('liked', v.id); }
     save.liked();
     const s = this.slides.get(v.id);
     if (s) { const b = $('.like', s); b.classList.toggle('on', on); $('.lbl', b).textContent = on ? 'Aimé' : "J'aime"; }
@@ -1720,6 +1822,7 @@ class Feed {
       UI.toast(`✓ ${State.favorites[v.channelId].title} — tu verras ses nouveautés`);
     } else {
       delete State.favorites[v.channelId];
+      Cloud.drop('subscriptions', v.channelId);
       UI.toast('Chaîne retirée');
     }
     save.favorites();
@@ -1738,6 +1841,7 @@ class Feed {
   notFrench(v) {
     Lang.blacklist(v.channelId);
     delete State.pool[v.channelId]; save.pool();
+    Cloud.drop('channels', v.channelId);
     Discovery.forgetChannel(v.channelId);
     UI.toast(`🚫 ${v.channelTitle || 'Chaîne'} écartée du feed`);
     /* purge les vidéos de cette chaîne encore en file (au-delà de l'actif) */
@@ -1867,7 +1971,238 @@ const Subs = (() => {
 })();
 
 /* ══════════════════════════════════════════════════════════════════════
-   12. INTERFACE
+   12. SYNCHRONISATION — GOOGLE SHEET VIA APPS SCRIPT
+   Le profil (chaînes découvertes, abonnements, thèmes, intérêts, j'aime)
+   vit dans une feuille de calcul ; le localStorage reste le cache de
+   travail, parce qu'un feed vertical ne peut pas attendre 500 ms
+   d'aller-retour à chaque « j'aime ».
+
+   Modèle : *local-first*. On tire l'état distant au démarrage, on fusionne,
+   puis on pousse des deltas en différé. Les fusions sont des unions
+   commutatives (donc sûres entre plusieurs appareils, dans n'importe quel
+   ordre) sauf pour les réglages, où le distant gagne au démarrage.
+
+   Contrainte non négociable : Apps Script ne répond pas aux requêtes
+   préalables CORS (OPTIONS). Les requêtes doivent donc rester des
+   « simple requests » — d'où `Content-Type: text/plain`. Passer en
+   `application/json` déclencherait un préflight et tout casserait.
+   ══════════════════════════════════════════════════════════════════════ */
+const Cloud = (() => {
+  const DEBOUNCE = 6000;
+  const SEEN_SYNCED = 1500;          // on ne synchronise pas 4 000 identifiants
+
+  let status = 'off';                // off | ok | syncing | error
+  let detail = '';
+  let lastSync = Store.get('cloudSync', 0);
+  let timer = 0, busy = false, pulled = false;
+  const pending = new Set();
+  const removals = { subscriptions: new Set(), channels: new Set(), liked: new Set() };
+
+  const configured = () => !!(State.cloud.url && State.cloud.token);
+
+  async function rpc(action, extra) {
+    if (!configured()) throw new Error('Synchronisation non configurée');
+    const res = await fetch(State.cloud.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // cf. en-tête de section
+      body: JSON.stringify(Object.assign({ action, token: State.cloud.token }, extra || {})),
+      redirect: 'follow',
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    let j;
+    try { j = await res.json(); }
+    catch { throw new Error('réponse illisible — l\'application web est-elle déployée en accès « tout le monde » ?'); }
+    if (!j.ok) throw new Error(j.error === 'badToken' ? 'jeton refusé' : (j.error || 'refus du script'));
+    return j;
+  }
+
+  /* ---------- Construction du delta ---------- */
+  function patch(sections) {
+    const p = {}, kv = {};
+    if (sections.has('settings'))  kv.settings  = State.settings;
+    if (sections.has('interests')) kv.interests = State.interests;
+    if (sections.has('stats'))     kv.stats     = State.stats;
+    if (sections.has('chanLang'))  kv.chanLang  = State.chanLang;
+    if (sections.has('topics'))    kv.topics    = State.topics;
+    if (sections.has('seen'))      kv.seen      = State.seen.slice(-SEEN_SYNCED);
+    if (Object.keys(kv).length) p.kv = kv;
+
+    if (sections.has('pool'))
+      p.channels = Object.entries(State.pool).map(([id, c]) => ({
+        channelId: id, title: c.title || '', uploads: c.uploads || '',
+        score: Math.round((c.score || 0) * 100) / 100,
+        lang: Lang.channelVerdict(id) || '',
+        lastPulled: c.lastPulled || 0, discoveredAt: c.discoveredAt || Date.now(),
+      }));
+
+    if (sections.has('favorites'))
+      p.subscriptions = Object.entries(State.favorites).map(([id, f]) => ({
+        channelId: id, title: f.title || '', thumb: f.thumb || '', uploads: f.uploads || '',
+        addedAt: f.addedAt || 0, lastSeenAt: f.lastSeenAt || 0, newCount: f.newCount || 0,
+      }));
+
+    if (sections.has('liked'))
+      p.liked = Object.entries(State.liked).map(([id, l]) => ({
+        videoId: id, title: l.title || '', channelId: l.channelId || '', likedAt: l.ts || 0,
+      }));
+
+    if (sections.has('topics')) {
+      p.topics = [];
+      for (const [id, on] of Object.entries(State.topics.cats))
+        p.topics.push({ key: 'cat:' + id, kind: 'catégorie', label: CAT_NAMES[id] || id, enabled: !!on, weight: 1 });
+      for (const [id, on] of Object.entries(State.topics.topics))
+        p.topics.push({ key: 'topic:' + id, kind: 'thème', label: TOPIC_LABEL[id] || id, enabled: !!on, weight: 1 });
+      (State.topics.seeds || []).forEach((sd, i) =>
+        p.topics.push({ key: 'seed:' + i, kind: 'mot-clé', label: sd, enabled: true, weight: 1 }));
+    }
+
+    for (const table of Object.keys(removals))
+      if (removals[table].size) p['remove_' + table] = [...removals[table]];
+    return p;
+  }
+
+  /* ---------- Poussée ---------- */
+  function mark(section) {
+    if (!configured() || !pulled) return;      // ne rien pousser avant d'avoir fusionné
+    pending.add(section);
+    clearTimeout(timer);
+    timer = setTimeout(() => push(), DEBOUNCE);
+  }
+  /** Signale une suppression (désabonnement, chaîne écartée). */
+  function drop(table, id) {
+    if (!configured()) return;
+    removals[table]?.add(id);
+    mark(table === 'subscriptions' ? 'favorites' : table === 'channels' ? 'pool' : 'liked');
+  }
+
+  async function push(force) {
+    if (!configured() || busy) return false;
+    if (!pending.size && !force) return true;
+    const sections = new Set(pending);
+    if (force) ['settings','interests','stats','chanLang','topics','seen','pool','favorites','liked']
+      .forEach(x => sections.add(x));
+    pending.clear();
+    busy = true; setStatus('syncing');
+    try {
+      const body = patch(sections);
+      const r = await rpc('save', { patch: body });
+      Object.values(removals).forEach(s => s.clear());
+      lastSync = Date.now(); Store.set('cloudSync', lastSync);
+      setStatus('ok', `${r.wrote?.rows || 0} ligne(s), ${r.wrote?.kv || 0} clé(s)`);
+      return true;
+    } catch (e) {
+      sections.forEach(x => pending.add(x));     // on retentera
+      setStatus('error', e.message);
+      return false;
+    } finally { busy = false; }
+  }
+
+  /* ---------- Tirage + fusion ---------- */
+  async function pull() {
+    if (!configured()) { pulled = true; return null; }
+    setStatus('syncing');
+    try {
+      const { profile } = await rpc('load');
+      merge(profile || {});
+      pulled = true;
+      lastSync = Date.now(); Store.set('cloudSync', lastSync);
+      setStatus('ok', 'profil chargé');
+      return profile;
+    } catch (e) {
+      pulled = true;                             // ne pas bloquer l'appli hors-ligne
+      setStatus('error', e.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fusion. Les collections s'unissent (commutatif : l'ordre entre appareils
+   * n'a pas d'importance). Deux exceptions assumées :
+   *   · un verdict « pas français » est définitif et écrase un « français » ;
+   *   · les réglages viennent du distant, qui fait référence.
+   */
+  function merge(p) {
+    const kv = p.kv || {};
+
+    if (kv.settings) State.settings = Object.assign({}, DEFAULT_SETTINGS, State.settings, kv.settings);
+    if (kv.topics) {
+      const t = kv.topics;
+      State.topics = {
+        cats  : Object.assign({}, t.cats || {},   State.topics.cats),
+        topics: Object.assign({}, t.topics || {}, State.topics.topics),
+        seeds : uniq([...(t.seeds || []), ...(State.topics.seeds || [])]),
+        only  : t.only ?? State.topics.only,
+      };
+    }
+    if (kv.interests) {
+      const I = State.interests, R = kv.interests;
+      for (const k of ['terms', 'cats', 'chans'])
+        for (const [key, v] of Object.entries(R[k] || {}))
+          I[k][key] = Math.max(I[k][key] || 0, v);
+    }
+    if (kv.stats) for (const [k, v] of Object.entries(kv.stats))
+      State.stats[k] = Math.max(State.stats[k] || 0, v);
+    if (kv.chanLang) for (const [cid, c] of Object.entries(kv.chanLang)) {
+      const l = State.chanLang[cid] || { fr: 0, other: 0, verdict: null };
+      State.chanLang[cid] = {
+        fr: Math.max(l.fr, c.fr || 0), other: Math.max(l.other, c.other || 0),
+        verdict: l.verdict === 'other' || c.verdict === 'other' ? 'other' : (l.verdict || c.verdict || null),
+      };
+    }
+    if (Array.isArray(kv.seen)) {
+      for (const id of kv.seen) if (!seenSet.has(id)) { seenSet.add(id); State.seen.push(id); }
+    }
+
+    for (const c of p.channels || []) {
+      if (!c.channelId) continue;
+      const cur = State.pool[c.channelId];
+      State.pool[c.channelId] = {
+        uploads: c.uploads || cur?.uploads || uploadsOf(c.channelId),
+        title  : c.title || cur?.title || '',
+        score  : Math.max(+c.score || 0, cur?.score || 0),
+        lastPulled: Math.max(+c.lastPulled || 0, cur?.lastPulled || 0),
+        page   : cur?.page || null,
+        discoveredAt: +c.discoveredAt || cur?.discoveredAt || Date.now(),
+      };
+    }
+    for (const f of p.subscriptions || []) {
+      if (!f.channelId) continue;
+      const cur = State.favorites[f.channelId];
+      State.favorites[f.channelId] = {
+        title: f.title || cur?.title || 'Chaîne', thumb: f.thumb || cur?.thumb || '',
+        uploads: f.uploads || cur?.uploads || uploadsOf(f.channelId),
+        addedAt: Math.min(+f.addedAt || Date.now(), cur?.addedAt || Date.now()),
+        lastSeenAt: Math.max(+f.lastSeenAt || 0, cur?.lastSeenAt || 0),
+        lastPulled: cur?.lastPulled || 0, newCount: cur?.newCount ?? (+f.newCount || 0),
+      };
+    }
+    for (const l of p.liked || []) {
+      if (!l.videoId || State.liked[l.videoId]) continue;
+      State.liked[l.videoId] = { title: l.title || '', channelId: l.channelId || '', ts: +l.likedAt || 0 };
+    }
+
+    /* Persiste la fusion en local, sans redéclencher de poussée. */
+    const was = pulled; pulled = false;
+    ['settings','topics','interests','stats','chanLang','seen','pool','favorites','liked'].forEach(k => save[k]?.());
+    pulled = was;
+  }
+
+  /* `UI` est déclaré plus bas : au cas où un statut serait émis très tôt,
+     on évite la zone morte temporelle du `const`. */
+  function setStatus(st, d) {
+    status = st; detail = d || '';
+    try { UI.refreshCloudRow?.(); } catch {}
+  }
+
+  return { pull, push, mark, drop, rpc, configured,
+           get status() { return status; }, get detail() { return detail; },
+           get lastSync() { return lastSync; }, get queued() { return pending.size; } };
+})();
+
+onProfileChange = section => Cloud.mark(section);
+
+/* ══════════════════════════════════════════════════════════════════════
+   13. INTERFACE
    ══════════════════════════════════════════════════════════════════════ */
 const feeds = {};
 let current = 'foryou';
@@ -1961,6 +2296,7 @@ const UI = {
     requestAnimationFrame(() => p.classList.add('on'));
     if (id === 'panelSettings') this.renderSettings();
     if (id === 'panelSubs') this.renderSubs();
+    if (id === 'panelTopics') this.renderTopics();
   },
   closePanel(id) {
     const p = $('#' + id);
@@ -1978,6 +2314,13 @@ const UI = {
 
   onActiveChange(feed, v) {
     if (!State.settings.sound && feed === feeds[current]) $('#nudge').hidden = false;
+  },
+
+  /** Appelé par Cloud à chaque changement d'état, sans tout redessiner. */
+  refreshCloudRow() {
+    const row = $('#cloudRow');
+    if (!row || $('#panelSettings').hidden) return;
+    this.renderSettings();
   },
 
   refreshSubsBadge() {
@@ -2012,6 +2355,46 @@ const UI = {
        <div class="row"><div class="rx"><div class="rt">Dernier scan</div>
          <div class="rd">${Subs.lastScan ? fmtAgo(new Date(Subs.lastScan).toISOString()) : 'jamais'} · coût : 1 unité par chaîne</div></div>
          <button class="mini" id="subsScanNow">Scanner</button></div>`;
+  },
+
+  /* ---------- panneau centres d'intérêt ---------- */
+  async renderTopics() {
+    const body = $('#topicsBody');
+    const T = State.topics;
+    const catRows = State.catList.length
+      ? State.catList.map(c => `<button class="pill${T.cats[c.id] ? ' on' : ''}" data-cat="${esc(c.id)}">${esc(c.title)}</button>`).join('')
+      : `<button class="btn ghost" id="loadCats">Charger les catégories (1 unité)</button>`;
+
+    body.innerHTML = `
+      <div class="row"><div class="rx"><div class="rt">N'utiliser que mes thèmes</div>
+        <div class="rd">Activé, la découverte se limite à ce que tu sélectionnes ici. Désactivé, tes thèmes sont privilégiés mais l'exploration continue.</div></div>
+        <div class="sw ${T.only ? 'on' : ''}" id="swOnly" role="switch" aria-checked="${T.only}"></div></div>
+
+      <div class="sechead">Mes mots-clés</div>
+      <div class="rd">Envoyés tels quels comme requête de recherche. C'est le levier le plus efficace : « recette de grand-mère » donne de bien meilleurs résultats qu'une catégorie entière.</div>
+      <div class="grid" id="seedGrid">${
+        (T.seeds || []).map((sd, i) => `<button class="pill on" data-seed="${i}">${esc(sd)}<span class="x">✕</span></button>`).join('')
+        || '<span class="rd">Aucun mot-clé.</span>'}</div>
+      <div class="addrow">
+        <input id="seedInput" placeholder="ex. astuce jardinage" maxlength="60" spellcheck="false">
+        <button class="btn primary" id="seedAdd">Ajouter</button>
+      </div>
+
+      <div class="sechead">Catégories YouTube</div>
+      <div class="rd">Paramètre officiel <code>videoCategoryId</code>, libellés fournis en français par l'API pour la région FR.</div>
+      <div class="grid" id="catGrid">${catRows}</div>
+
+      <div class="sechead">Thèmes</div>
+      <div class="rd">Paramètre <code>topicId</code>. Depuis l'arrêt de Freebase (février 2017) YouTube n'accepte plus qu'un jeu figé d'identifiants : c'est toute la granularité disponible.</div>
+      ${TOPICS.map(([group, list]) => `
+        <div class="sechead" style="margin:16px 0 0;letter-spacing:.06em">${esc(group)}</div>
+        <div class="grid">${list.map(([id, label]) =>
+          `<button class="pill${T.topics[id] ? ' on' : ''}" data-topic="${esc(id)}">${esc(label)}</button>`).join('')}</div>`).join('')}
+
+      <div class="sechead">Appris automatiquement</div>
+      <div class="rd">Déduit de tes « j'aime ». Non modifiable — c'est le modèle qui pilote l'équilibre exploration / exploitation.</div>
+      <div class="grid">${Discovery.topTerms(16).map(t => `<span class="chip">${esc(t)}</span>`).join('') || '<span class="rd">Rien encore.</span>'}</div>
+      <div class="rd" style="margin-top:18px">Ces choix sont enregistrés dans ta feuille Google (onglet <b>topics</b>) et suivent tous tes appareils.</div>`;
   },
 
   /* ---------- panneau réglages ---------- */
@@ -2081,6 +2464,34 @@ const UI = {
         <div class="chips" style="margin-top:8px">${Discovery.topCats(4).map(c => `<span class="chip">${esc(CAT_NAMES[c] || c)}</span>`).join('')}</div>
       </div>
 
+      <div class="sechead">Centres d'intérêt</div>
+      <div class="row"><div class="rx"><div class="rt">Thèmes et mots-clés</div>
+        <div class="rd">${Discovery.onSeeds().length} mot(s)-clé · ${Discovery.onCats().length} catégorie(s) · ${Discovery.onTopics().length} thème(s)${State.topics.only ? ' · exclusif' : ''}</div></div>
+        <button class="mini" id="openTopics">Configurer</button></div>
+
+      <div class="sechead">Synchronisation Google Sheet</div>
+      <div class="row" id="cloudRow"><div class="rx"><div class="rt" style="display:flex;align-items:center;gap:7px">
+        <span class="dot ${Cloud.status}"></span>${
+          Cloud.configured()
+            ? { ok: 'Synchronisé', syncing: 'Synchronisation…', error: 'Erreur de synchronisation', off: 'En attente' }[Cloud.status]
+            : 'Non configurée'}</div>
+        <div class="rd">${Cloud.configured()
+          ? (Cloud.detail ? esc(Cloud.detail) + ' · ' : '') + (Cloud.lastSync ? fmtAgo(new Date(Cloud.lastSync).toISOString()) : 'jamais') +
+            (Cloud.queued ? ` · ${Cloud.queued} modification(s) en attente` : '')
+          : 'Le profil ne vit que dans ce navigateur. Renseigne l\'URL de l\'application web Apps Script pour le conserver dans une feuille.'}</div></div>
+        ${Cloud.configured() ? '<button class="mini" id="cloudPush">Envoyer</button>' : ''}</div>
+      <div class="row" style="display:block">
+        <div class="field" style="gap:7px">
+          <input id="cloudUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(State.cloud.url)}" spellcheck="false">
+          <input id="cloudToken" type="password" placeholder="jeton partagé (TOKEN dans Code.gs)" value="${esc(State.cloud.token)}" autocomplete="off">
+          <div class="addrow" style="margin:0">
+            <button class="btn ghost" id="cloudTest" style="flex:1">Tester</button>
+            <button class="btn primary" id="cloudSave" style="flex:1">Enregistrer</button>
+          </div>
+        </div>
+        <div class="rd" style="margin-top:9px">La feuille peut être publique en lecture sans risque. Le jeton, lui, protège l'écriture : sans lui, n'importe qui pourrait réécrire ton profil. La clé API YouTube n'est jamais envoyée à la feuille.</div>
+      </div>
+
       <div class="sechead">Données</div>
       <div class="row"><div class="rx"><div class="rt">Vidéos vues</div><div class="rd">${State.seen.length} identifiants mémorisés pour ne rien répéter.</div></div>
         <button class="mini" id="resetSeen">Vider</button></div>
@@ -2093,7 +2504,7 @@ const UI = {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   13. CÂBLAGE DES ÉVÉNEMENTS
+   14. CÂBLAGE DES ÉVÉNEMENTS
    ══════════════════════════════════════════════════════════════════════ */
 $$('.tab').forEach(b => b.addEventListener('click', () => UI.tab(b.dataset.tab)));
 $('#btnSettings').addEventListener('click', () => UI.openPanel('panelSettings'));
@@ -2107,6 +2518,7 @@ $('#subsList').addEventListener('click', async e => {
   if (un) {
     const id = un.dataset.unfollow;
     delete State.favorites[id];
+    Cloud.drop('subscriptions', id);
     save.favorites(); Subs.invalidate(); UI.renderSubs(); UI.refreshSubsBadge();
     UI.toast('Chaîne retirée');
     return;
@@ -2129,6 +2541,49 @@ document.addEventListener('click', async e => {
   if (e.target.id === 'subsScanNow') $('#subsRefresh').click();
 });
 
+/* panneau centres d'intérêt */
+$('#topicsBody').addEventListener('click', async e => {
+  const t = e.target, T = State.topics;
+  const cat = t.closest('[data-cat]'), top = t.closest('[data-topic]'), seed = t.closest('[data-seed]');
+
+  if (cat)  { const id = cat.dataset.cat;   T.cats[id]   = !T.cats[id];   save.topics(); UI.renderTopics(); return; }
+  if (top)  { const id = top.dataset.topic; T.topics[id] = !T.topics[id]; save.topics(); UI.renderTopics(); return; }
+  if (seed) { T.seeds.splice(+seed.dataset.seed, 1); save.topics(); UI.renderTopics(); return; }
+  if (t.closest('#swOnly')) { T.only = !T.only; save.topics(); UI.renderTopics(); return; }
+  if (t.id === 'seedAdd') { addSeed(); return; }
+
+  if (t.id === 'loadCats') {
+    t.textContent = 'Chargement…'; t.disabled = true;
+    try {
+      const d = await Api.call('videoCategories', { part: 'snippet', regionCode: 'FR', hl: 'fr' });
+      /* Seules les catégories « assignables » sont utilisables en recherche. */
+      State.catList = (d.items || [])
+        .filter(i => i.snippet?.assignable)
+        .map(i => ({ id: i.id, title: i.snippet.title }))
+        .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+      save.catList(); UI.renderTopics();
+    } catch (err) { UI.toast(err.message || 'Échec du chargement', true); t.textContent = 'Réessayer'; t.disabled = false; }
+  }
+});
+$('#topicsBody').addEventListener('keydown', e => { if (e.target.id === 'seedInput' && e.key === 'Enter') addSeed(); });
+function addSeed() {
+  const inp = $('#seedInput');
+  const v = (inp?.value || '').trim().toLowerCase();
+  if (!v) return;
+  if (v.length < 3) { UI.toast('Trop court', true); return; }
+  if (State.topics.seeds.includes(v)) { UI.toast('Déjà présent', true); return; }
+  State.topics.seeds.push(v);
+  save.topics();
+  Discovery.resetBackoff();      // un nouveau mot-clé mérite une nouvelle tentative
+  UI.renderTopics();
+  UI.toast('« ' + v + " » ajouté");
+}
+$('#topicsClear').addEventListener('click', () => {
+  if (!confirm('Effacer tous les thèmes, catégories et mots-clés choisis ?')) return;
+  State.topics = { cats: {}, topics: {}, seeds: [], only: false };
+  save.topics(); UI.renderTopics(); UI.toast('Centres d\'intérêt effacés');
+});
+
 /* panneau réglages */
 $('#settingsBody').addEventListener('click', e => {
   const t = e.target;
@@ -2143,6 +2598,37 @@ $('#settingsBody').addEventListener('click', e => {
   if (t.closest('#swSound')) { UI.setSound(!State.settings.sound); UI.renderSettings(); return; }
   if (t.closest('#swAuto'))  { State.settings.autoAdvance = !State.settings.autoAdvance; save.settings(); UI.renderSettings(); return; }
   if (t.closest('#swLoop'))  { State.settings.loopSingle = !State.settings.loopSingle; save.settings(); UI.renderSettings(); return; }
+  if (t.id === 'openTopics') { UI.closePanel('panelSettings'); UI.openPanel('panelTopics'); return; }
+
+  if (t.id === 'cloudSave' || t.id === 'cloudTest') {
+    const url = $('#cloudUrl').value.trim(), token = $('#cloudToken').value.trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url)) {
+      UI.toast('URL attendue : https://script.google.com/macros/s/.../exec', true); return;
+    }
+    State.cloud = { url, token }; save.cloud();
+    const testing = t.id === 'cloudTest';
+    t.disabled = true; t.textContent = testing ? 'Test…' : 'Envoi…';
+    (async () => {
+      try {
+        if (testing) {
+          const r = await Cloud.rpc('ping');
+          UI.toast(r.authed ? '✓ Script joignable, jeton accepté' : 'Script joignable mais jeton refusé', !r.authed);
+        } else {
+          await Cloud.pull();
+          const ok = await Cloud.push(true);
+          UI.toast(ok ? '✓ Profil enregistré dans la feuille' : 'Échec : ' + Cloud.detail, !ok);
+        }
+      } catch (err) { UI.toast(err.message || 'Échec', true); }
+      UI.renderSettings();
+    })();
+    return;
+  }
+  if (t.id === 'cloudPush') {
+    t.textContent = '…';
+    Cloud.push(true).then(ok => { UI.toast(ok ? '✓ Envoyé' : 'Échec : ' + Cloud.detail, !ok); UI.renderSettings(); });
+    return;
+  }
+
   if (t.id === 'resetLang')  { State.chanLang = {}; save.chanLang(); UI.renderSettings(); UI.toast('Mémoire des chaînes effacée'); return; }
   if (t.id === 'resetSeen')  { State.seen = []; seenSet.clear(); save.seen(); UI.renderSettings(); UI.toast('Historique vidé'); return; }
   if (t.id === 'resetKey')   { Store.del('key'); State.key = ''; location.reload(); return; }
@@ -2165,6 +2651,10 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { $$('.panel.on').forEach(p => UI.closePanel(p.id)); }
 });
 
+/* Départ de la page : on tente une dernière poussée. `visibilitychange` est
+   le seul événement fiable sur iOS — `beforeunload` n'y est pas garanti. */
+document.addEventListener('visibilitychange', () => { if (document.hidden) Cloud.push(); });
+
 /* onglet en arrière-plan : on met en pause pour ne pas consommer de bande passante */
 document.addEventListener('visibilitychange', () => {
   const f = feeds[current];
@@ -2174,7 +2664,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ══════════════════════════════════════════════════════════════════════
-   14. AMORÇAGE
+   15. AMORÇAGE
    ══════════════════════════════════════════════════════════════════════ */
 $('#keyGo').addEventListener('click', submitKey);
 $('#keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitKey(); });
@@ -2210,6 +2700,13 @@ async function boot() {
     UI.showState('err', 'Lecteur YouTube inaccessible',
       'Le script iframe_api n\'a pas pu être chargé (bloqueur de contenu, réseau ?).', 'Réessayer', () => location.reload());
     return;
+  }
+
+  /* Profil distant d'abord : les abonnements et thèmes récupérés changent
+     la toute première recharge. Échec = on continue en local. */
+  if (Cloud.configured()) {
+    $('#stateTitle').textContent = 'Chargement de ton profil…';
+    await Cloud.pull();
   }
 
   feeds.foryou = new Feed('feed-foryou', async first => {

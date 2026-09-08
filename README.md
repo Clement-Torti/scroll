@@ -116,6 +116,115 @@ el coste de 8 recargas cae de 1560 u a 4 u.
   a demanda o dejar de seguirlos.
 - Seguir un canal lo marca como francés validado y lo prioriza en el pool.
 
+## Icono en la pantalla de inicio (iOS)
+
+Al añadir la página a la pantalla de inicio, se comporta como una app: sin
+barras de Safari (`display: standalone`), orientación vertical, y un icono
+propio en `icons/`. El icono es un diseño original — un triángulo de play con
+la bandera francesa — generado desde [icons/icon.svg](icons/icon.svg):
+
+```bash
+for SZ in 1024 512 192 180 32; do
+  magick -background "#0b0b12" icons/icon.svg -resize ${SZ}x${SZ} -flatten -alpha off -depth 8 out-${SZ}.png
+done
+```
+
+Dos detalles que importan: Safari **ignora el SVG** para `apple-touch-icon`
+(hace falta un PNG opaco de 180×180), y `black-translucent` hace que el
+contenido pase por debajo de la barra de estado — de ahí los márgenes
+`env(safe-area-inset-*)` en el CSS.
+
+---
+
+## Perfil en una Google Sheet (Apps Script)
+
+La clave API sigue en `localStorage`. El **perfil** — canales descubiertos,
+suscripciones, temas, intereses, «me gusta» — vive en una hoja de cálculo, así
+que sobrevive al borrado del navegador y sigue a todos tus dispositivos.
+
+### Puesta en marcha
+
+1. Crea una hoja de cálculo vacía y copia su ID de la URL
+   (`/spreadsheets/d/<ID>/edit`).
+2. [script.google.com](https://script.google.com) → Nuevo proyecto → pega
+   [apps-script/Code.gs](apps-script/Code.gs).
+3. Rellena `SHEET_ID` y `TOKEN` (una cadena aleatoria larga).
+4. Ejecuta la función `setup()` una vez, para crear las pestañas y aceptar los
+   permisos.
+5. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
+   acceso *cualquier persona*. Copia la URL `.../exec`.
+6. En la app: Ajustes → Sincronización → pega la URL y el token → **Probar**,
+   luego **Guardar**.
+
+### Arquitectura: local-first
+
+Un feed vertical no puede esperar 500 ms de ida y vuelta a cada «me gusta». Así
+que `localStorage` sigue siendo la caché de trabajo: al arrancar se **tira** del
+estado remoto y se fusiona, después se **empujan deltas** con 6 s de retardo.
+
+Las fusiones son **uniones conmutativas** — el orden entre dispositivos no
+importa — con dos excepciones deliberadas: un veredicto «no es francés» es
+definitivo y gana siempre, y los ajustes vienen del remoto, que es la
+referencia.
+
+### La trampa del CORS
+
+**Apps Script no responde a las peticiones previas de CORS (`OPTIONS`).** Por
+eso el cliente envía `Content-Type: text/plain;charset=utf-8`: así la petición
+sigue siendo una *simple request* y el navegador nunca lanza el preflight.
+Cambiarlo a `application/json` rompería todo, y no se puede arreglar añadiendo
+cabeceras en `doPost` — el preflight falla antes de que tu código se ejecute.
+
+### Pestañas de la hoja
+
+| Pestaña | Contenido |
+|---|---|
+| `kv` | ajustes, intereses, estadísticas, memoria de idioma, vistos (JSON) |
+| `channels` | el pool de canales descubiertos, con su puntuación |
+| `subscriptions` | tus canales seguidos |
+| `topics` | categorías, temas y palabras clave elegidas |
+| `liked` | tus «me gusta» |
+
+Una celda de Sheets admite 50 000 caracteres, así que los valores grandes se
+parten en trozos (`seen#0`, `seen#1`…) y se reensamblan al leer. Y las
+escrituras se hacen en **un solo `setValues()`** por pestaña: celda a celda,
+300 canales tardarían minutos y agotarían las cuotas de Apps Script.
+
+Sobre lo «público»: la hoja puede ser pública **en lectura** sin problema. El
+token protege la **escritura** — sin él, cualquiera con la URL de la app web
+podría reescribir tu perfil. La clave API de YouTube nunca se envía a la hoja.
+
+---
+
+## Temas de interés configurables
+
+Panel *Ajustes → Centros de interés*. Tres ejes, y conviene saber cuál sirve
+para qué:
+
+- **Palabras clave** (`q`): el levier más eficaz. «recette de grand-mère» da
+  mejores resultados que una categoría entera.
+- **Categorías** (`videoCategoryId`): las ~15 oficiales, con etiquetas en
+  francés que la propia API entrega para la región FR. Exige `type=video`.
+- **Temas** (`topicId`): un juego **congelado** de identificadores desde el
+  final de Freebase (27-02-2017). Es toda la granularidad que existe.
+
+El interruptor *N'utiliser que mes thèmes* decide si la selección **restringe**
+la búsqueda o solo la **prioriza** dejando que la exploración siga.
+
+Ojo con una trampa de la API: `topicDetails.topicIds` y `relevantTopicIds`
+están deprecados desde el 10-11-2016 y **devuelven vacío**. Solo
+`topicCategories` (URLs de Wikipedia) sigue dando datos, y no es consultable.
+
+### Lo que la API *no* hace
+
+**La API de YouTube no aprende tus gustos.** Con una API key las llamadas son
+apátridas y anónimas: la clave identifica al proyecto, no a una persona. Y con
+OAuth tampoco hay recomendaciones — `activities.list?home=true` está deprecado,
+y el historial de visualización se retiró en 2016. Por eso el modelo de
+intereses es nuestro, y por eso guardarlo importa.
+
+---
+
 ## Atajos de teclado
 
 | Tecla | Acción |
