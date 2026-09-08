@@ -17,15 +17,14 @@
  *   · LockService sérialise les écritures concurrentes.
  *   · La clé API YouTube ne transite jamais ici : elle reste dans le
  *     navigateur. Cette feuille ne contient que le profil.
- *   · Pas d'authentification : l'URL /exec est le secret. Elle contient un
- *     identifiant long et non devinable (`/macros/s/AKfycb…/exec`), et rien
- *     de destructeur n'est exposé — `resetProfile()` ne s'exécute que depuis
- *     l'éditeur. Traiter cette URL comme un mot de passe : ne pas la publier.
+ *   · Pas d'authentification, et la feuille est publique : ce profil est
+ *     lisible par qui veut, c'est assumé. Rien de destructeur n'est exposé
+ *     pour autant — `resetProfile()` ne s'exécute que depuis l'éditeur.
  *
- *  DÉPLOIEMENT — rien à configurer dans ce fichier
+ *  DÉPLOIEMENT
  *   1. script.google.com → Nouveau projet → coller ce fichier
- *   2. Lancer setup() une fois depuis l'éditeur : cela demande les
- *      autorisations et crée la feuille dans ton Drive
+ *   2. Lancer setup() une fois depuis l'éditeur : accorde les autorisations
+ *      et crée les onglets manquants
  *   3. Déployer → Nouveau déploiement → type « Application web »
  *        Exécuter en tant que : moi
  *        Qui a accès       : tout le monde
@@ -38,17 +37,12 @@
  */
 
 /**
- * Rien à configurer : au premier appel le script crée lui-même la feuille
- * « Shorts FR — profil » dans ton Drive et retient son identifiant dans les
- * propriétés du script. Les appels suivants la réutilisent.
- *
- * À ne renseigner que pour viser une feuille *existante* (son ID est dans son
- * URL : /spreadsheets/d/<ID>/edit).
+ * Identifiant de la feuille, lu dans son URL :
+ * docs.google.com/spreadsheets/d/<IDENTIFIANT>/edit
+ * La feuille est publique et le reste : cet identifiant n'est pas un secret.
+ * Pour changer de feuille, il suffit de coller un autre identifiant ici.
  */
-var SHEET_ID = '';
-
-var SHEET_NAME = 'Shorts FR — profil';
-var PROP_ID = 'shortsfr.sheetId';
+var SHEET_ID = '1JbES6DCiMIFs-571DvokJjVIFC95Lpa5eEAsBfKCAn0';
 
 var VERSION = 1;
 var CHUNK = 40000;   // marge sous la limite de 50 000 caractères par cellule
@@ -107,30 +101,11 @@ function json(obj) {
 
 /* ─────────────────────────── Accès à la feuille ─────────────────────────── */
 
-/**
- * La feuille de travail, créée à la demande.
- * Mémoïsé : `tab()` appelle book() pour chaque onglet, et rouvrir le classeur
- * à chaque fois coûterait plusieurs appels Sheets par requête.
- */
+/* Mémoïsé : tab() appelle book() pour chacun des cinq onglets, et rouvrir le
+   classeur chaque fois coûterait plusieurs appels Sheets par requête. */
 var _book = null;
 function book() {
-  if (_book) return _book;
-  var props = PropertiesService.getScriptProperties();
-  var id = SHEET_ID || props.getProperty(PROP_ID);
-
-  if (id) {
-    try { return (_book = SpreadsheetApp.openById(id)); }
-    catch (e) {
-      /* Feuille supprimée ou mise à la corbeille : on en refait une plutôt
-         que de laisser le script définitivement cassé. */
-      if (SHEET_ID) throw new Error('SHEET_ID renseigné mais introuvable : ' + SHEET_ID);
-      props.deleteProperty(PROP_ID);
-    }
-  }
-
-  var ss = SpreadsheetApp.create(SHEET_NAME);
-  props.setProperty(PROP_ID, ss.getId());
-  return (_book = ss);
+  return _book || (_book = SpreadsheetApp.openById(SHEET_ID));
 }
 
 /** Récupère un onglet, en le créant avec ses en-têtes s'il manque. */
@@ -320,45 +295,10 @@ function resetProfile() {
 
 /* ─────────────────────────── Installation ───────────────────────────
    À lancer une fois depuis l'éditeur Apps Script (bouton « Exécuter ») :
-   accorde les autorisations, crée la feuille et ses onglets, et affiche
-   l'adresse de la feuille dans le journal.                              */
+   accorde les autorisations et crée les onglets manquants.              */
 function setup() {
-  var ss = book();
   var p = load();
-  Logger.log('Feuille : %s', ss.getName());
-  Logger.log('Adresse : %s', ss.getUrl());
+  Logger.log('Feuille : %s', book().getUrl());
   Logger.log('Onglets : %s', ['kv'].concat(Object.keys(TABLES)).join(', '));
   Logger.log('Clés kv : %s', Object.keys(p.kv).join(', ') || '(aucune)');
-  return ss.getUrl();
-}
-
-/**
- * Pointe le script vers une feuille *existante*, sans écrire son
- * identifiant dans ce fichier — pratique quand le dépôt est public.
- * À lancer une fois depuis l'éditeur, en collant l'ID entre les guillemets :
- *
- *     function go() { useSheet('1AbC…'); }
- *
- * L'identifiant se lit dans l'URL de la feuille :
- * docs.google.com/spreadsheets/d/<IDENTIFIANT>/edit
- */
-function useSheet(id) {
-  id = String(id || '').trim();
-  /* Tolère qu'on colle l'URL entière plutôt que l'identifiant seul. */
-  var m = /\/spreadsheets\/d\/([\w-]+)/.exec(id);
-  if (m) id = m[1];
-  if (!id) throw new Error('Identifiant de feuille manquant');
-  var ss = SpreadsheetApp.openById(id);          // lève si introuvable ou sans accès
-  PropertiesService.getScriptProperties().setProperty(PROP_ID, id);
-  _book = null;
-  load();                                        // crée les onglets manquants
-  Logger.log('Feuille reliée : %s', ss.getUrl());
-  return ss.getUrl();
-}
-
-/** Oublie la feuille courante : le prochain appel en recrée une neuve. */
-function forgetSheet() {
-  PropertiesService.getScriptProperties().deleteProperty(PROP_ID);
-  _book = null;
-  Logger.log('Identifiant oublié. Le prochain appel créera une nouvelle feuille.');
 }
