@@ -1637,12 +1637,19 @@ const Discovery = (() => {
     }
   }
 
-  function addToPool(channelId, ch, conf) {
+  /**
+   * @param src 'seed' pour une chaîne issue de l'annuaire curé, 'auto' pour
+   *            une chaîne rencontrée au fil de la découverte. Sans cette
+   *            marque, impossible de distinguer les deux plus tard : c'est ce
+   *            qui permet de ne garder que l'annuaire.
+   */
+  function addToPool(channelId, ch, conf, src) {
     if (!channelId) return;
     const p = State.pool[channelId] || { uploads: uploadsOf(channelId), score: 0, lastPulled: 0, page: null, title: '' };
     p.uploads = ch?.uploads || p.uploads || uploadsOf(channelId);
     p.title = ch?.title || p.title;
     p.score = (p.score || 0) + (conf || .5);
+    if (src === 'seed' || !p.src) p.src = src || 'auto';
     State.pool[channelId] = p;
   }
 
@@ -1723,7 +1730,7 @@ const Discovery = (() => {
     const ch = normChannel(it);
     State.ccache[ch.id] = ch; save.ccache();
     seed.cid = ch.id;
-    addToPool(ch.id, ch, Curated.scoreOf(handle));
+    addToPool(ch.id, ch, Curated.scoreOf(handle), 'seed');
     /* Les thèmes de l'annuaire enrichissent le pool : ils serviront à
        privilégier cette chaîne quand l'utilisateur cible ces thèmes. */
     State.pool[ch.id].cats = seed.cats.slice();
@@ -1800,7 +1807,9 @@ const Discovery = (() => {
       ['seed',   seedsLeft ? 7 : 0],
       ['pool',   6 + Math.min(6, poolSize / 12)],
       ['search', canSearch ? 1.2 : 0],
-      ['chart',  seedsLeft ? .4 : 1.1],
+      /* Le classement FR ramène des chaînes hors annuaire : écarté tant que
+         l'annuaire a de la réserve. */
+      ['chart',  seedsLeft ? 0 : 1.1],
       ['favs',   favCount ? 1.6 : 0],
     ]);
   }
@@ -1896,6 +1905,33 @@ const Discovery = (() => {
     return out;
   }
 
+  /**
+   * Ne garde dans le pool que les chaînes venues de l'annuaire curé, plus
+   * celles que l'utilisateur suit explicitement — les retirer serait défaire
+   * son choix. Tout le reste part, y compris de la feuille : sans quoi la
+   * synchronisation suivante les ramènerait.
+   *
+   * @returns {{removed:number, kept:number, favoris:number}}
+   */
+  function keepOnlyCurated() {
+    let removed = 0, kept = 0, favoris = 0;
+    for (const [id, p] of Object.entries(State.pool)) {
+      if (p.src === 'seed') { kept++; continue; }
+      if (State.favorites[id]) { favoris++; continue; }
+      delete State.pool[id];
+      delete State.interests.chans[id];
+      Cloud.drop('channels', id);
+      forgetChannel(id);
+      removed++;
+    }
+    /* Les vidéos déjà en file venaient peut-être de ces chaînes. */
+    for (let i = buffer.length - 1; i >= 0; i--)
+      if (!State.pool[buffer[i].channelId]) buffer.splice(i, 1);
+    save.pool(); save.interests();
+    dryUntil = 0;
+    return { removed, kept, favoris };
+  }
+
   /** Appelé quand l'utilisateur change la sévérité du filtre. */
   const requeueSoftRejects = () => softReject.clear();
 
@@ -1923,7 +1959,8 @@ const Discovery = (() => {
   };
 
   return { collect, reinforce, interleave, hydrate, addToPool, topTerms, topCats,
-           requeueSoftRejects, forgetChannel, resetBackoff, invalidateQueue, onCats, onTopics, onSeeds,
+           requeueSoftRejects, forgetChannel, resetBackoff, invalidateQueue, keepOnlyCurated,
+           onCats, onTopics, onSeeds,
            get buffered() { return buffer.length; },
            get bufferedChannels() { return distinctChannels(buffer); },
            get searches() { return searchesSinceReset; },
@@ -3234,6 +3271,10 @@ const UI = {
         <div class="rd"><b>${Curated.count()}</b> chaînes de plus de 10 000 abonnés, classées par thème (source : montremoitachaine.fr) · <b>${Curated.left()}</b> encore à découvrir.
         Une chaîne curée entre dans le feed pour 3 unités, contre 100 pour une recherche YouTube.</div></div>
         <button class="mini" id="resetSeeds">Rejouer</button></div>
+      <div class="row"><div class="rx"><div class="rt">Ne garder que l'annuaire</div>
+        <div class="rd">Retire du feed <em>et de la feuille</em> toutes les chaînes qui ne viennent pas de l'annuaire — celles que la recherche YouTube avait ramenées. Les chaînes que tu suis sont conservées.
+        Actuellement : <b>${Object.values(State.pool).filter(p => p.src === 'seed').length}</b> curées, <b>${Object.values(State.pool).filter(p => p.src !== 'seed').length}</b> autres.</div></div>
+        <button class="mini danger" id="purgePool">Nettoyer</button></div>
       <div class="row"><div class="rx"><div class="rt">Découverte YouTube</div>
         <div class="rd">${Curated.left() >= 15
           ? 'Écartée : l\'annuaire a encore de la réserve et donne de meilleurs résultats en français.'
@@ -3457,6 +3498,15 @@ $('#settingsBody').addEventListener('click', e => {
 
   if (t.id === 'resetLang')  { State.chanLang = {}; save.chanLang(); UI.renderSettings(); UI.toast('Mémoire des chaînes effacée'); return; }
   if (t.id === 'resetSeen')  { State.seen = []; seenSet.clear(); save.seen(); UI.renderSettings(); UI.toast('Historique vidé'); return; }
+  if (t.id === 'purgePool') {
+    const r = Discovery.keepOnlyCurated();
+    Cloud.push();
+    UI.renderSettings();
+    UI.toast(r.removed
+      ? `${r.removed} chaîne(s) retirée(s) · ${r.kept} curée(s) et ${r.favoris} suivie(s) conservées`
+      : 'Rien à retirer : le pool ne contient que l\'annuaire');
+    return;
+  }
   if (t.id === 'resetSeeds') {
     for (const v of Object.values(State.seeds)) v.tried = 0;
     save.seeds(); Discovery.resetBackoff(); UI.renderSettings();
@@ -3532,6 +3582,8 @@ async function submitKey() {
   }
 }
 
+let pendingPurgeNotice = null;
+
 async function boot() {
   $('#bottomnav').hidden = false;
   $('#topbar').hidden = false;
@@ -3570,7 +3622,25 @@ async function boot() {
     Cloud.pull().then(() => { UI.refreshSubsBadge(); UI.toast('Profil synchronisé'); });
   }
 
+  /* Purge unique. Le pool accumulé par la recherche YouTube contenait des
+     chaînes que l'utilisateur n'a jamais demandées ; l'annuaire les remplace.
+     Après la fusion du profil distant, sinon la feuille les ramènerait. */
+  if (!Store.get('poolPurgeV1', false)) {
+    const r = Discovery.keepOnlyCurated();
+    Store.set('poolPurgeV1', true);
+    if (r.removed) {
+      console.info(`[Shorts FR] ${r.removed} chaînes hors annuaire retirées ` +
+                   `(${r.kept} curées, ${r.favoris} suivies conservées)`);
+      pendingPurgeNotice = r;
+    }
+  }
+
   await UI.tab('foryou');   // l'invite « son » n'apparaît qu'avec la 1re slide (onActiveChange)
+  if (pendingPurgeNotice) {
+    const r = pendingPurgeNotice; pendingPurgeNotice = null;
+    UI.toast(`${r.removed} chaînes hors annuaire retirées du feed et de la feuille`);
+    Cloud.push();
+  }
 
   /* Scan des abonnements en tâche de fond (1 u par chaîne) */
   if (Object.keys(State.favorites).length) {

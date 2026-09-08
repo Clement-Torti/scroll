@@ -139,13 +139,33 @@ leer su playlist «uploads», y las metadatos de sus vídeos.
 Medido con un test que reproduce una selección de un solo tema: **cero
 búsquedas de YouTube**, y los 5 canales servidos salieron todos de ese tema.
 
+### Solo el catálogo
+
+Cada canal del pool lleva su **procedencia**: `seed` si viene del catálogo,
+`auto` si lo trajo la búsqueda de YouTube. Eso permite limpiar con precisión
+en vez de adivinar.
+
+*Ajustes → Annuaire francophone → Nettoyer* retira del feed **y de la hoja**
+todo lo que no venga del catálogo. Se ejecuta también **una vez sola de forma
+automática**, porque el pool acumulado por la búsqueda contenía canales que
+nunca se pidieron. Se conservan los canales que sigues explícitamente —
+quitarlos sería deshacer tu elección.
+
+Hay que borrarlos también de la hoja, no solo del navegador: si no, la
+siguiente sincronización los devuelve. La purga limpia además
+`interests.chans`, donde esos canales habían acumulado peso.
+
+Y el ranking `mostPopular` de Francia queda **desactivado** mientras el
+catálogo tenga reserva: traía canales de fuera de él.
+
 ### La jerarquía de fuentes
 
 1. **`seed`** — un canal del catálogo que coincide con tus temas (3 u).
 2. **`pool`** — la playlist «uploads» de un canal ya resuelto (1 u / 50 vídeos).
    Los canales cuyo tema del directorio coincide con tu selección pesan 2,5×.
 3. **`favs`** — los canales que sigues.
-4. **`chart`** — el ranking `mostPopular` de Francia (1 u).
+4. **`chart`** — el ranking `mostPopular` de Francia (1 u). **Desactivado**
+   mientras queden canales curados: sus canales no están en el catálogo.
 5. **`search`** — **desactivada** mientras queden 15+ canales curados sin
    resolver. Solo entra cuando el catálogo se agota.
 
