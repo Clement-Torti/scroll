@@ -594,6 +594,16 @@ const State = {
 let onProfileChange = () => {};
 const seenSet = new Set(State.seen);
 
+/* Le modèle d'intérêts a été entraîné à tort sur les vidéos simplement vues.
+   Les termes accumulés ne reflètent donc pas des goûts et on ne peut pas
+   distinguer ceux qui venaient de vrais « j'aime » : on repart de zéro, une
+   seule fois. */
+if (!Store.get('interestsResetV2', false)) {
+  State.interests = { terms: {}, cats: {}, chans: {} };
+  Store.set('interests', State.interests);
+  Store.set('interestsResetV2', true);
+}
+
 const save = {
   settings : () => touch('settings',  Store.set('settings',  State.settings)),
   favorites: () => touch('favorites', Store.set('favorites', State.favorites)),
@@ -1100,37 +1110,6 @@ function playable(v) {
 
    Exploration / exploitation : ε-greedy piloté par le modèle d'intérêts.
    ══════════════════════════════════════════════════════════════════════ */
-const SEEDS = `recette rapide|astuce cuisine|pâtisserie facile|recette gâteau|street food france|
-humour français|sketch drôle|blague courte|stand up france|parodie française|
-musique française|rap français|chanson française|reprise guitare|piano tuto|
-actu france|décryptage politique|économie expliquée|histoire de france|anecdote historique|
-science expliquée|expérience physique|chimie amusante|espace astronomie|maths astuce|
-bricolage maison|rénovation appartement|déco intérieur|jardinage conseils|potager bio|
-animaux mignons|chat drôle|chien dressage|cheval équitation|aquarium poisson|
-maquillage tuto|coiffure tuto|mode look|soin peau routine|ongles nail art|
-fitness exercice|musculation conseil|yoga débutant|étirement souplesse|perte de poids conseil|
-foot ligue 1|basket france|rugby france|tennis technique|cyclisme vélo|
-voyage france|paris insolite|marseille|lyon|bretagne|corse|alpes randonnée|
-jeux vidéo test|minecraft astuce|fortnite|jeu de société|échecs stratégie|
-tech smartphone|intelligence artificielle|programmation astuce|excel astuce|photo astuce|
-argent économie|bourse investir|immobilier conseil|impôts fiscalité|budget conseil|
-orthographe astuce|expression française|apprendre l'anglais|langue française|vocabulaire|
-philosophie idée|psychologie conseil|développement personnel|motivation citation|méditation|
-médecine santé|nutrition conseil|sommeil astuce|premiers secours|dentiste conseil|
-moto essai|voiture essai|mécanique auto|avion aviation|train sncf|
-magie tour|illusion incroyable|énigme mystère|fait insolite|le saviez-vous|
-dessin tuto|peinture technique|poterie céramique|couture débutant|tricot crochet|
-cinéma critique|série avis|livre lecture|manga anime|cosplay|
-métier reconversion|entretien embauche|startup entreprise|droit avocat|permis de conduire|
-école lycée|études université|révisions bac|concours|orientation|
-danse chorégraphie|théâtre impro|chant technique|batterie rythme|beatmaking|
-zéro déchet|diy récup|rangement astuce|ménage astuce|lessive linge|
-belgique humour|québec expression|suisse romande|afrique francophone|antilles|
-vin dégustation|fromage français|bière artisanale|café barista|cocktail|
-pêche technique|chasse nature|escalade bloc|surf vague|ski neige|skate trick|
-boxe technique|judo karaté|self défense|course à pied|natation technique`
-  .split('|').map(s => s.trim()).filter(Boolean);
-
 /* ══════════════════════════════════════════════════════════════════════
    THÈMES CONFIGURABLES
    Trois axes réellement exploitables côté API :
@@ -1170,6 +1149,111 @@ const CATEGORIES = ['1','2','10','15','17','20','22','23','24','25','26','27','2
 const CAT_NAMES = { '1':'Cinéma','2':'Auto','10':'Musique','15':'Animaux','17':'Sport','20':'Gaming',
   '22':'Vlog','23':'Humour','24':'Divertissement','25':'Actu','26':'Tuto','27':'Éducation','28':'Science' };
 
+/**
+ * Semences de recherche, rattachées au thème qu'elles servent.
+ *
+ * Le rattachement n'est pas cosmétique : croiser un thème avec une semence
+ * sans rapport — « Animaux » + « bourse investir » — ne renvoie rien, et le
+ * feed se met à famine. Quand l'utilisateur a choisi des thèmes, le texte de
+ * la requête est donc tiré des semences de CE thème.
+ */
+const SEED_GROUPS = {
+  '/m/02wbm' : ['recette rapide','astuce cuisine','pâtisserie facile','recette gâteau','street food france',
+                'vin dégustation','fromage français','bière artisanale','café barista','cocktail',
+                'recette végétarienne','batch cooking','pain maison'],
+  '/m/09kqc' : ['humour français','sketch drôle','blague courte','stand up france','parodie française',
+                'imitation drôle','caméra cachée'],
+  '/m/04rlf' : ['musique française','rap français','chanson française','reprise guitare','piano tuto',
+                'chant technique','batterie rythme','beatmaking','danse chorégraphie'],
+  '/m/05qt0' : ['actu france','décryptage politique','économie expliquée'],
+  '/m/01k8wb': ['science expliquée','expérience physique','chimie amusante','espace astronomie','maths astuce',
+                'histoire de france','anecdote historique','orthographe astuce','expression française',
+                "apprendre l'anglais",'langue française','vocabulaire','philosophie idée','énigme mystère',
+                'fait insolite','le saviez-vous','école lycée','études université','révisions bac','géographie'],
+  '/m/03glg' : ['bricolage maison','rénovation appartement','jardinage conseils','potager bio',
+                'dessin tuto','peinture technique','poterie céramique','couture débutant','tricot crochet',
+                'modélisme','lego construction','pêche technique','photo astuce'],
+  '/m/019_rr': ['déco intérieur','zéro déchet','diy récup','rangement astuce','ménage astuce','lessive linge',
+                'astuce maison','organisation quotidien'],
+  '/m/068hy' : ['animaux mignons','chat drôle','chien dressage','cheval équitation','aquarium poisson',
+                'oiseaux jardin','comportement animal','refuge animaux'],
+  '/m/041xxh': ['maquillage tuto','soin peau routine','ongles nail art','coiffure tuto'],
+  '/m/032tl' : ['mode look','style vestimentaire','friperie tri'],
+  '/m/027x7n': ['fitness exercice','musculation conseil','yoga débutant','étirement souplesse',
+                'perte de poids conseil','course à pied','natation technique'],
+  '/m/06ntj' : ['foot ligue 1','basket france','rugby france','tennis technique','cyclisme vélo',
+                'escalade bloc','surf vague','ski neige','skate trick','boxe technique','judo karaté',
+                'self défense','échecs stratégie'],
+  '/m/07bxq' : ['voyage france','paris insolite','marseille','lyon','bretagne','corse','alpes randonnée',
+                'village le plus beau','road trip france','week-end pas cher'],
+  '/m/0bzvm2': ['jeux vidéo test','minecraft astuce','fortnite','jeu de société','rétrogaming'],
+  '/m/07c1v' : ['tech smartphone','intelligence artificielle','programmation astuce','excel astuce',
+                'astuce iphone','astuce android'],
+  '/m/09s1f' : ['argent économie','bourse investir','immobilier conseil','impôts fiscalité','budget conseil',
+                'métier reconversion','entretien embauche','startup entreprise','droit avocat'],
+  '/m/0kt51' : ['médecine santé','nutrition conseil','sommeil astuce','premiers secours','dentiste conseil',
+                'psychologie conseil','méditation','mal de dos','hydratation'],
+  '/m/02vxn' : ['cinéma critique','série avis','livre lecture','manga anime','cosplay'],
+  '/m/07yv9' : ['moto essai','voiture essai','mécanique auto','avion aviation','train sncf','permis de conduire'],
+  '/m/02jjt' : ['magie tour','illusion incroyable','théâtre impro','talent incroyable'],
+};
+
+/* Thèmes parents : on réunit les semences de leurs enfants. */
+const TOPIC_SEEDS = (() => {
+  const out = Object.assign({}, SEED_GROUPS);
+  for (const [, list] of TOPICS) {
+    const parent = list[0][0];
+    const union = [];
+    for (const [id] of list) if (SEED_GROUPS[id]) union.push(...SEED_GROUPS[id]);
+    if (union.length) out[parent] = uniq((out[parent] || []).concat(union));
+  }
+  return out;
+})();
+
+/* Correspondance pour les catégories officielles, même logique. */
+const CAT_SEEDS = {
+  '1' : SEED_GROUPS['/m/02vxn'], '2' : SEED_GROUPS['/m/07yv9'],
+  '10': SEED_GROUPS['/m/04rlf'], '15': SEED_GROUPS['/m/068hy'],
+  '17': SEED_GROUPS['/m/06ntj'], '20': SEED_GROUPS['/m/0bzvm2'],
+  '23': SEED_GROUPS['/m/09kqc'], '24': SEED_GROUPS['/m/02jjt'],
+  '25': SEED_GROUPS['/m/05qt0'],
+  '26': uniq([...SEED_GROUPS['/m/02wbm'], ...SEED_GROUPS['/m/03glg'], ...SEED_GROUPS['/m/041xxh'], ...SEED_GROUPS['/m/019_rr']]),
+  '27': SEED_GROUPS['/m/01k8wb'],
+  '28': uniq([...SEED_GROUPS['/m/01k8wb'], ...SEED_GROUPS['/m/07c1v']]),
+};
+
+const SEEDS = `recette rapide|astuce cuisine|pâtisserie facile|recette gâteau|street food france|
+humour français|sketch drôle|blague courte|stand up france|parodie française|
+musique française|rap français|chanson française|reprise guitare|piano tuto|
+actu france|décryptage politique|économie expliquée|histoire de france|anecdote historique|
+science expliquée|expérience physique|chimie amusante|espace astronomie|maths astuce|
+bricolage maison|rénovation appartement|déco intérieur|jardinage conseils|potager bio|
+animaux mignons|chat drôle|chien dressage|cheval équitation|aquarium poisson|
+maquillage tuto|coiffure tuto|mode look|soin peau routine|ongles nail art|
+fitness exercice|musculation conseil|yoga débutant|étirement souplesse|perte de poids conseil|
+foot ligue 1|basket france|rugby france|tennis technique|cyclisme vélo|
+voyage france|paris insolite|marseille|lyon|bretagne|corse|alpes randonnée|
+jeux vidéo test|minecraft astuce|fortnite|jeu de société|échecs stratégie|
+tech smartphone|intelligence artificielle|programmation astuce|excel astuce|photo astuce|
+argent économie|bourse investir|immobilier conseil|impôts fiscalité|budget conseil|
+orthographe astuce|expression française|apprendre l'anglais|langue française|vocabulaire|
+philosophie idée|psychologie conseil|développement personnel|motivation citation|méditation|
+médecine santé|nutrition conseil|sommeil astuce|premiers secours|dentiste conseil|
+moto essai|voiture essai|mécanique auto|avion aviation|train sncf|
+magie tour|illusion incroyable|énigme mystère|fait insolite|le saviez-vous|
+dessin tuto|peinture technique|poterie céramique|couture débutant|tricot crochet|
+cinéma critique|série avis|livre lecture|manga anime|cosplay|
+métier reconversion|entretien embauche|startup entreprise|droit avocat|permis de conduire|
+école lycée|études université|révisions bac|concours|orientation|
+danse chorégraphie|théâtre impro|chant technique|batterie rythme|beatmaking|
+zéro déchet|diy récup|rangement astuce|ménage astuce|lessive linge|
+belgique humour|québec expression|suisse romande|afrique francophone|antilles|
+vin dégustation|fromage français|bière artisanale|café barista|cocktail|
+pêche technique|chasse nature|escalade bloc|surf vague|ski neige|skate trick|
+boxe technique|judo karaté|self défense|course à pied|natation technique`
+  .split('|').map(s => s.trim()).filter(Boolean);
+
+
 const Discovery = (() => {
   const MODIFIERS = ['', ' #shorts', ' shorts', ' en 1 minute', ' astuce', ' rapide'];
   const ORDERS    = ['relevance', 'date', 'viewCount', 'rating'];
@@ -1208,10 +1292,37 @@ const Discovery = (() => {
     /* Trois sources de mots-clés, par ordre de priorité décroissante :
        ceux saisis par l'utilisateur, ceux appris de ses « j'aime », le
        catalogue de semences intégré. */
+    /* Filtre thématique d'abord : il détermine ensuite le vocabulaire.
+       Toujours appliqué dès que l'utilisateur a choisi quelque chose — il
+       ne l'était qu'une fois sur deux, si bien que la moitié des recherches
+       ignoraient ses thèmes. `videoCategoryId` et `topicId` peuvent coexister
+       mais les cumuler restreint trop : on en tire un des deux. */
+    const cats = onCats(), tops = onTopics();
+    const extra = {};
+    let themed = null;                         // semences cohérentes avec le filtre
+    if (tops.length && (!cats.length || Math.random() < .5)) {
+      const t = pick(tops);
+      extra.topicId = t;
+      themed = TOPIC_SEEDS[t] || null;
+    } else if (cats.length) {
+      const c = pick(cats);
+      extra.videoCategoryId = c;
+      themed = CAT_SEEDS[c] || null;
+    }
+
+    /* Vocabulaire de la requête, par ordre de priorité :
+         1. les mots-clés saisis par l'utilisateur ;
+         2. les semences du thème qu'il a choisi ;
+         3. seulement à défaut de choix explicite, les termes appris.
+       Un choix explicite prime toujours sur une déduction : c'est ce qui
+       empêche un modèle dérivé de reprendre la main sur une sélection. */
     let q, label;
-    if (mine.length && (only || Math.random() < .55)) {
+    const chose = !!(tops.length || cats.length);
+    if (mine.length && (only || Math.random() < .6)) {
       q = pick(mine); label = 'mes mots-clés';
-    } else if (!only && terms.length >= 3 && Math.random() < .5) {
+    } else if (themed && themed.length) {
+      q = pick(themed); label = 'mon thème';
+    } else if (!chose && !only && terms.length >= 3 && Math.random() < .45) {
       const a = pick(terms);
       q = Math.random() < .35 ? `${a} ${pick(SEEDS)}` : a;
       label = 'intérêts appris';
@@ -1223,13 +1334,6 @@ const Discovery = (() => {
       Store.set('usedSeeds', State.usedSeeds);
       label = 'exploration';
     }
-
-    /* Filtre thématique. `videoCategoryId` et `topicId` peuvent coexister,
-       mais les cumuler restreint trop : on en tire un des deux. */
-    const cats = onCats(), tops = onTopics();
-    const extra = {};
-    if (cats.length && (only || Math.random() < .5)) extra.videoCategoryId = pick(cats);
-    else if (tops.length && (only || Math.random() < .5)) extra.topicId = pick(tops);
     if (extra.videoCategoryId) label += ` · ${CAT_NAMES[extra.videoCategoryId] || extra.videoCategoryId}`;
     else if (extra.topicId) label += ` · ${TOPIC_LABEL[extra.topicId] || extra.topicId}`;
 
@@ -1736,7 +1840,11 @@ class Feed {
     const v = this.items[idx];
     if (!v) return;
     markSeen(v.id);
-    Discovery.reinforce(v, .35);                 // vu = signal faible d'intérêt
+    /* Aucun renforcement au visionnage. Une vidéo qui défile n'est pas un
+       goût : les Shorts « business / dropshipping », prolifiques et lourdement
+       étiquetés, se retrouvaient réinjectés comme requêtes puis revus, donc
+       encore renforcés — une boucle qui finissait par manger tout le feed.
+       Seuls « j'aime » et « suivre » entraînent désormais le modèle. */
     this.ensurePlayers();
     this.playActive();
     if (idx >= this.items.length - this.refillAt) this.refill(false);
@@ -2491,9 +2599,12 @@ const UI = {
         <div class="grid">${list.map(([id, label]) =>
           `<button class="pill${T.topics[id] ? ' on' : ''}" data-topic="${esc(id)}">${esc(label)}</button>`).join('')}</div>`).join('')}
 
-      <div class="sechead">Appris automatiquement</div>
-      <div class="rd">Déduit de tes « j'aime ». Non modifiable — c'est le modèle qui pilote l'équilibre exploration / exploitation.</div>
-      <div class="grid">${Discovery.topTerms(16).map(t => `<span class="chip">${esc(t)}</span>`).join('') || '<span class="rd">Rien encore.</span>'}</div>
+      <div class="sechead">Appoint automatique</div>
+      <div class="row" style="align-items:flex-start"><div class="rx">
+        <div class="rt">Appris de tes « j'aime »</div>
+        <div class="rd">Alimenté uniquement par les vidéos que tu aimes et les chaînes que tu suis — jamais par celles qui défilent. Sert d'appoint : tes thèmes ci-dessus passent devant.</div></div>
+        <button class="mini danger" id="forgetLearned">Oublier</button></div>
+      <div class="grid">${Discovery.topTerms(16).map(t => `<span class="chip">${esc(t)}</span>`).join('') || '<span class="rd">Rien encore — aime quelques vidéos.</span>'}</div>
       <div class="rd" style="margin-top:18px">Ces choix sont enregistrés dans ta feuille Google (onglet <b>topics</b>) et suivent tous tes appareils.</div>`;
   },
 
@@ -2643,6 +2754,13 @@ $('#topicsBody').addEventListener('click', async e => {
   if (seed) { T.seeds.splice(+seed.dataset.seed, 1); save.topics(); UI.renderTopics(); return; }
   if (t.closest('#swOnly')) { T.only = !T.only; save.topics(); UI.renderTopics(); return; }
   if (t.id === 'seedAdd') { addSeed(); return; }
+  if (t.id === 'forgetLearned') {
+    State.interests = { terms: {}, cats: {}, chans: {} };
+    save.interests();
+    UI.renderTopics();
+    UI.toast('Modèle d\'intérêts remis à zéro');
+    return;
+  }
 
   if (t.id === 'loadCats') {
     t.textContent = 'Chargement…'; t.disabled = true;
