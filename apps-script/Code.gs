@@ -17,10 +17,14 @@
  *   · LockService sérialise les écritures concurrentes.
  *   · La clé API YouTube ne transite jamais ici : elle reste dans le
  *     navigateur. Cette feuille ne contient que le profil.
+ *   · Pas d'authentification : l'URL /exec est le secret. Elle contient un
+ *     identifiant long et non devinable (`/macros/s/AKfycb…/exec`), et rien
+ *     de destructeur n'est exposé — `resetProfile()` ne s'exécute que depuis
+ *     l'éditeur. Traiter cette URL comme un mot de passe : ne pas la publier.
  *
  *  DÉPLOIEMENT
  *   1. script.google.com → Nouveau projet → coller ce fichier
- *   2. Renseigner SHEET_ID et TOKEN ci-dessous
+ *   2. Renseigner SHEET_ID ci-dessous
  *   3. Déployer → Nouveau déploiement → type « Application web »
  *        Exécuter en tant que : moi
  *        Qui a accès       : tout le monde
@@ -30,14 +34,6 @@
 
 /** ID de la feuille (dans son URL : /spreadsheets/d/<ID>/edit). */
 var SHEET_ID = 'METTRE_ICI_L_ID_DE_LA_FEUILLE';
-
-/**
- * Secret partagé. La feuille peut être publique *en lecture* sans risque,
- * mais l'application web est accessible à tout le monde : sans ce jeton,
- * n'importe qui pourrait réécrire le profil. À remplacer par une chaîne
- * aléatoire longue.
- */
-var TOKEN = 'METTRE_ICI_UN_JETON_ALEATOIRE_LONG';
 
 var VERSION = 1;
 var CHUNK = 40000;   // marge sous la limite de 50 000 caractères par cellule
@@ -67,12 +63,12 @@ function doPost(e) {
 function handle(req) {
   try {
     var action = req.action || 'ping';
-    if (action !== 'ping' && String(req.token || '') !== TOKEN) return json({ ok: false, error: 'badToken' });
-
-    if (action === 'ping')  return json({ ok: true, version: VERSION, authed: String(req.token || '') === TOKEN });
-    if (action === 'load')  return json({ ok: true, version: VERSION, profile: load() });
-    if (action === 'save')  return json(save(req.patch || {}));
-    if (action === 'reset') return json(reset());
+    if (action === 'ping') return json({ ok: true, version: VERSION });
+    if (action === 'load') return json({ ok: true, version: VERSION, profile: load() });
+    if (action === 'save') return json(save(req.patch || {}));
+    /* Pas de `reset` ici : c'est la seule opération destructrice, et sans
+       jeton elle serait à la portée de quiconque connaît l'URL. Elle reste
+       disponible en lançant resetProfile() depuis l'éditeur Apps Script. */
     return json({ ok: false, error: 'unknownAction: ' + action });
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
@@ -264,7 +260,8 @@ function writeTable(name, headers, upserts, removes) {
   return { wrote: wrote, removed: Object.keys(rm).length };
 }
 
-function reset() {
+/** Vide la feuille. À lancer depuis l'éditeur Apps Script uniquement. */
+function resetProfile() {
   var ss = book();
   var names = ['kv'];
   for (var n in TABLES) names.push(n);
@@ -282,6 +279,5 @@ function reset() {
 function setup() {
   var p = load();
   Logger.log('Onglets prêts. Clés kv : %s', Object.keys(p.kv).join(', ') || '(aucune)');
-  Logger.log('Jeton configuré : %s', TOKEN.indexOf('METTRE_ICI') === 0 ? 'NON — à faire !' : 'oui');
   Logger.log('URL de la feuille : %s', book().getUrl());
 }

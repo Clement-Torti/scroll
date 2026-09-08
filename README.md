@@ -178,13 +178,24 @@ que sobrevive al borrado del navegador y sigue a todos tus dispositivos.
    (`/spreadsheets/d/<ID>/edit`).
 2. [script.google.com](https://script.google.com) → Nuevo proyecto → pega
    [apps-script/Code.gs](apps-script/Code.gs).
-3. Rellena `SHEET_ID` y `TOKEN` (una cadena aleatoria larga).
+3. Rellena `SHEET_ID`. Es lo único que hay que configurar.
 4. Ejecuta la función `setup()` una vez, para crear las pestañas y aceptar los
    permisos.
 5. Implementar → Nueva implementación → **Aplicación web**, ejecutar *como yo*,
    acceso *cualquier persona*. Copia la URL `.../exec`.
-6. En la app: Ajustes → Sincronización → pega la URL y el token → **Probar**,
-   luego **Guardar**.
+6. Pega esa URL en la app — ya en la pantalla de inicio, o después en Ajustes →
+   Sincronización.
+
+### Sin autenticación: la URL *es* la contraseña
+
+No hay token. Google no lo pide y para un solo usuario no aporta gran cosa: la
+URL `/exec` ya contiene un identificador largo e imposible de adivinar
+(`/macros/s/AKfycb…/exec`). Trátala como una contraseña — no la publiques.
+
+Lo que sí hice es quitar la única operación destructiva del alcance de esa URL:
+`resetProfile()` ya **no está expuesta por HTTP** y solo se ejecuta desde el
+editor de Apps Script. Así, quien conociera la URL podría leer o sobrescribir
+el perfil, pero no borrar la hoja.
 
 ### Arquitectura: local-first
 
@@ -220,9 +231,8 @@ parten en trozos (`seen#0`, `seen#1`…) y se reensamblan al leer. Y las
 escrituras se hacen en **un solo `setValues()`** por pestaña: celda a celda,
 300 canales tardarían minutos y agotarían las cuotas de Apps Script.
 
-Sobre lo «público»: la hoja puede ser pública **en lectura** sin problema. El
-token protege la **escritura** — sin él, cualquiera con la URL de la app web
-podría reescribir tu perfil. La clave API de YouTube nunca se envía a la hoja.
+Sobre lo «público»: la hoja puede ser pública **en lectura** sin problema. La
+clave API de YouTube nunca se envía a la hoja — se queda en el `localStorage`.
 
 ---
 

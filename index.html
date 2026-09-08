@@ -364,7 +364,6 @@ a{color:var(--accent-2)}
       <p class="note" style="margin:0 0 11px">Sans ça l'application fonctionne, mais le profil (chaînes découvertes, abonnements, thèmes) ne vit que dans ce navigateur.</p>
       <div class="field">
         <input id="setupCloudUrl" placeholder="https://script.google.com/macros/s/.../exec" spellcheck="false" autocomplete="off">
-        <input id="setupCloudToken" type="password" placeholder="jeton partagé (TOKEN dans Code.gs)" autocomplete="off">
       </div>
       <p class="note">Renseigné <em>ici</em> plutôt que dans les réglages, le profil est chargé avant la première recharge : sur un nouvel appareil le feed démarre sur tes chaînes déjà connues, pour environ 2 unités au lieu d'une recherche à 100.</p>
     </div>
@@ -560,7 +559,7 @@ const State = {
   catList   : Store.get('catList', []),          // videoCategories.list, en cache
   /* Adresse de l'application web Apps Script. La clé API YouTube, elle, ne
      quitte jamais le navigateur : elle n'est pas synchronisée. */
-  cloud     : Store.get('cloud', { url: '', token: '' }),
+  cloud     : Store.get('cloud', { url: '' }),
 };
 
 /** Renseigné par le module Cloud (déclaré plus bas) : chaque écriture locale
@@ -2012,21 +2011,21 @@ const Cloud = (() => {
   const pending = new Set();
   const removals = { subscriptions: new Set(), channels: new Set(), liked: new Set() };
 
-  const configured = () => !!(State.cloud.url && State.cloud.token);
+  const configured = () => !!State.cloud.url;
 
   async function rpc(action, extra) {
     if (!configured()) throw new Error('Synchronisation non configurée');
     const res = await fetch(State.cloud.url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // cf. en-tête de section
-      body: JSON.stringify(Object.assign({ action, token: State.cloud.token }, extra || {})),
+      body: JSON.stringify(Object.assign({ action }, extra || {})),
       redirect: 'follow',
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let j;
     try { j = await res.json(); }
     catch { throw new Error('réponse illisible — l\'application web est-elle déployée en accès « tout le monde » ?'); }
-    if (!j.ok) throw new Error(j.error === 'badToken' ? 'jeton refusé' : (j.error || 'refus du script'));
+    if (!j.ok) throw new Error(j.error || 'refus du script');
     return j;
   }
 
@@ -2497,13 +2496,12 @@ const UI = {
       <div class="row" style="display:block">
         <div class="field" style="gap:7px">
           <input id="cloudUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(State.cloud.url)}" spellcheck="false">
-          <input id="cloudToken" type="password" placeholder="jeton partagé (TOKEN dans Code.gs)" value="${esc(State.cloud.token)}" autocomplete="off">
           <div class="addrow" style="margin:0">
             <button class="btn ghost" id="cloudTest" style="flex:1">Tester</button>
             <button class="btn primary" id="cloudSave" style="flex:1">Enregistrer</button>
           </div>
         </div>
-        <div class="rd" style="margin-top:9px">La feuille peut être publique en lecture sans risque. Le jeton, lui, protège l'écriture : sans lui, n'importe qui pourrait réécrire ton profil. La clé API YouTube n'est jamais envoyée à la feuille.</div>
+        <div class="rd" style="margin-top:9px">L'URL <code>/exec</code> est le secret : elle contient un identifiant long et non devinable. À traiter comme un mot de passe — ne pas la publier. Rien de destructeur n'est exposé côté script. La clé API YouTube n'est jamais envoyée à la feuille.</div>
       </div>
 
       <div class="sechead">Données</div>
@@ -2615,18 +2613,18 @@ $('#settingsBody').addEventListener('click', e => {
   if (t.id === 'openTopics') { UI.closePanel('panelSettings'); UI.openPanel('panelTopics'); return; }
 
   if (t.id === 'cloudSave' || t.id === 'cloudTest') {
-    const url = $('#cloudUrl').value.trim(), token = $('#cloudToken').value.trim();
+    const url = $('#cloudUrl').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url)) {
       UI.toast('URL attendue : https://script.google.com/macros/s/.../exec', true); return;
     }
-    State.cloud = { url, token }; save.cloud();
+    State.cloud = { url }; save.cloud();
     const testing = t.id === 'cloudTest';
     t.disabled = true; t.textContent = testing ? 'Test…' : 'Envoi…';
     (async () => {
       try {
         if (testing) {
-          const r = await Cloud.rpc('ping');
-          UI.toast(r.authed ? '✓ Script joignable, jeton accepté' : 'Script joignable mais jeton refusé', !r.authed);
+          await Cloud.rpc('ping');
+          UI.toast('✓ Script joignable');
         } else {
           await Cloud.pull();
           const ok = await Cloud.push(true);
@@ -2688,9 +2686,8 @@ async function submitKey() {
   const k = input.value.trim();
   err.textContent = '';
   if (!/^AIza[\w-]{20,}$/.test(k)) { err.textContent = 'Une clé YouTube commence par « AIza » et fait ~39 caractères.'; return; }
-  /* Synchronisation facultative : les deux champs vont ensemble. */
-  const cu = $('#setupCloudUrl').value.trim(), ct = $('#setupCloudToken').value.trim();
-  if ((cu || ct) && !(cu && ct)) { err.textContent = 'Pour la synchronisation, il faut l\'URL *et* le jeton (ou aucun des deux).'; return; }
+  /* Synchronisation facultative. L'URL /exec est le seul secret. */
+  const cu = $('#setupCloudUrl').value.trim();
   if (cu && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(cu)) {
     err.textContent = 'URL attendue : https://script.google.com/macros/s/.../exec'; return;
   }
@@ -2700,7 +2697,7 @@ async function submitKey() {
   try {
     await Api.call('videoCategories', { part: 'snippet', regionCode: 'FR', hl: 'fr' });  // 1 u
     Store.set('key', k);
-    if (cu && ct) { State.cloud = { url: cu, token: ct }; save.cloud(); }
+    if (cu) { State.cloud = { url: cu }; save.cloud(); }
     $('#setup').hidden = true;
     boot();
   } catch (e) {
@@ -2755,7 +2752,6 @@ else {
   $('#setup').hidden = false;
   /* « Changer la clé » ne doit pas faire ressaisir la config de synchro. */
   $('#setupCloudUrl').value = State.cloud.url || '';
-  $('#setupCloudToken').value = State.cloud.token || '';
   $('#keyInput').focus();
 }
 </script>
