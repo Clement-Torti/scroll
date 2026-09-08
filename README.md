@@ -300,12 +300,22 @@ intereses es nuestro, y por eso guardarlo importa.
 | `l` | me gusta |
 | `Esc` | cerrar paneles |
 
-Gestos: swipe vertical, un toque para pausar, doble toque para «me gusta».
+Gestos: swipe vertical, un toque para pausar, doble toque para «me gusta»,
+y **pulsación larga** en *Abonnements* para gestionar los canales seguidos.
+
+La interfaz imita la de TikTok: barra de navegación abajo (Pour toi,
+Abonnements, Intérêts, Réglages), acciones a la derecha con iconos rellenos, y
+el avatar del canal con su botón de seguir encima. No hay barra superior — el
+contenido va a sangre.
 
 ## Límites conocidos
 
 - El navegador solo permite autoplay **silenciado**; hay que tocar una vez
   «Appuie pour le son» (igual que TikTok o Instagram en web).
+- El desenfoque de fondo (`backdrop-filter`) se aplica **solo a la slide
+  visible**. Aplicado a todas, el compositor mezclaba dos capas desenfocadas
+  por slide durante el scroll, y ahí se perdía la fluidez. El degradado, que
+  es lo que tapa la incrustación de YouTube, sí va en todas: cuesta cero.
 - El short siguiente se **precarga**: se lanza silenciado fuera de pantalla y
   se congela en su primer fotograma, para que el swipe arranque desde el búfer
   en vez de en frío. Cuesta algo de datos — un vídeo de adelanto — y mantiene
