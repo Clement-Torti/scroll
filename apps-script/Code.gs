@@ -49,7 +49,7 @@ var CHUNK = 40000;   // marge sous la limite de 50 000 caractères par cellule
 
 /* Colonnes des onglets tabulaires : première colonne = identifiant. */
 var TABLES = {
-  channels     : ['channelId', 'title', 'uploads', 'score', 'lang', 'lastPulled', 'discoveredAt'],
+  channels     : ['channelId', 'title', 'uploads', 'score', 'lang', 'src', 'lastPulled', 'discoveredAt'],
   subscriptions: ['channelId', 'title', 'thumb', 'uploads', 'addedAt', 'lastSeenAt', 'newCount'],
   topics       : ['key', 'kind', 'label', 'enabled', 'weight'],
   liked        : ['videoId', 'title', 'channelId', 'likedAt'],
@@ -108,7 +108,11 @@ function book() {
   return _book || (_book = SpreadsheetApp.openById(SHEET_ID));
 }
 
-/** Récupère un onglet, en le créant avec ses en-têtes s'il manque. */
+/**
+ * Récupère un onglet, en le créant s'il manque — et en réparant son en-tête
+ * si les colonnes ont changé depuis la version précédente du script. Sans
+ * cette réparation, une colonne ajoutée décalerait toutes les écritures.
+ */
 function tab(name, headers) {
   var ss = book();
   var sh = ss.getSheetByName(name);
@@ -116,7 +120,13 @@ function tab(name, headers) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
     sh.setFrozenRows(1);
+    return sh;
   }
+  var w = sh.getLastColumn();
+  var head = w ? sh.getRange(1, 1, 1, w).getValues()[0] : [];
+  var same = head.length >= headers.length;
+  for (var i = 0; same && i < headers.length; i++) if (head[i] !== headers[i]) same = false;
+  if (!same) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
   return sh;
 }
 
@@ -291,6 +301,22 @@ function resetProfile() {
   }
   load();   // recrée les onglets vides avec leurs en-têtes
   return { ok: true, reset: names };
+}
+
+/**
+ * Vide l'onglet `channels`. À lancer depuis l'éditeur.
+ *
+ * Le pool n'est qu'un cache : l'application le reconstruit à partir de
+ * l'annuaire curé. Pratique pour repartir d'une feuille propre quand elle
+ * contient des chaînes qu'on ne veut plus, sans attendre que l'application
+ * les retire une à une.
+ */
+function clearChannels() {
+  var sh = tab('channels', TABLES.channels);
+  var last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
+  Logger.log('Onglet channels vidé (%s lignes).', Math.max(0, last - 1));
+  return last - 1;
 }
 
 /* ─────────────────────────── Installation ───────────────────────────

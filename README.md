@@ -155,6 +155,24 @@ Hay que borrarlos también de la hoja, no solo del navegador: si no, la
 siguiente sincronización los devuelve. La purga limpia además
 `interests.chans`, donde esos canales habían acumulado peso.
 
+Tres detalles que hicieron falta para que esto funcione de verdad:
+
+- La purga corre **después** de fusionar el perfil remoto. La primera versión
+  corría antes y marcaba su bandera igualmente: limpiaba el navegador, la hoja
+  reinyectaba los mismos canales acto seguido, y la purga no volvía a pasar.
+- La **fusión rechaza** los canales que no son `seed` una vez hecha la purga, y
+  acaba de borrarlos de la hoja. Sin ese guardián, la hoja seguía siendo una
+  puerta de entrada.
+- La columna `src` se añadió a la pestaña `channels`, para que la procedencia
+  sobreviva al ida y vuelta. `tab()` **repara el encabezado** si las columnas
+  cambiaron: sin eso, una columna nueva desplazaría todas las escrituras.
+
+Y el score del pool está **acotado a 8**. `hydrate` llama a `addToPool` por
+cada vídeo aceptado, así que un canal muy prolífico llegaba a **438** mientras
+los demás se quedaban en 1,2 — y el sorteo ponderado ya solo lo servía a él.
+El tope se aplica al añadir, al fusionar desde la hoja, y una vez sobre los
+valores ya guardados.
+
 Y el ranking `mostPopular` de Francia queda **desactivado** mientras el
 catálogo tenga reserva: traía canales de fuera de él.
 

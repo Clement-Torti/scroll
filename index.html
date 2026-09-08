@@ -720,6 +720,16 @@ const State = {
 let onProfileChange = () => {};
 const seenSet = new Set(State.seen);
 
+/* Scores de pool accumulés sans plafond : une chaîne pouvait atteindre 438
+   quand les autres restaient à 1,2, et monopoliser le tirage. On les ramène
+   une fois à l'échelle. */
+if (!Store.get('poolScoreCapV1', false)) {
+  const pool = Store.get('pool', {});
+  for (const p of Object.values(pool)) if (p && p.score > 8) p.score = 8;
+  Store.set('pool', pool);
+  Store.set('poolScoreCapV1', true);
+}
+
 /* Le modèle d'intérêts a été entraîné à tort sur les vidéos simplement vues.
    Les termes accumulés ne reflètent donc pas des goûts et on ne peut pas
    distinguer ceux qui venaient de vrais « j'aime » : on repart de zéro, une
@@ -1648,7 +1658,10 @@ const Discovery = (() => {
     const p = State.pool[channelId] || { uploads: uploadsOf(channelId), score: 0, lastPulled: 0, page: null, title: '' };
     p.uploads = ch?.uploads || p.uploads || uploadsOf(channelId);
     p.title = ch?.title || p.title;
-    p.score = (p.score || 0) + (conf || .5);
+    /* Score plafonné. `hydrate` appelle addToPool pour chaque vidéo acceptée :
+       une chaîne très fournie atteignait 438 quand les autres restaient à 1,2,
+       et le tirage pondéré ne servait plus qu'elle. */
+    p.score = Math.min(8, (p.score || 0) + (conf || .5));
     if (src === 'seed' || !p.src) p.src = src || 'auto';
     State.pool[channelId] = p;
   }
@@ -2860,6 +2873,7 @@ const Cloud = (() => {
         channelId: id, title: c.title || '', uploads: c.uploads || '',
         score: Math.round((c.score || 0) * 100) / 100,
         lang: Lang.channelVerdict(id) || '',
+        src: c.src || 'auto',
         lastPulled: c.lastPulled || 0, discoveredAt: c.discoveredAt || Date.now(),
       }));
 
@@ -3009,13 +3023,26 @@ const Cloud = (() => {
       for (const id of kv.seen) if (!seenSet.has(id)) { seenSet.add(id); State.seen.push(id); }
     }
 
+    /* Une fois le pool assaini, la feuille ne doit plus pouvoir y réinjecter
+       des chaînes hors annuaire : c'est par cette porte que le contenu écarté
+       revenait à chaque démarrage. */
+    const curatedOnly = Store.get('poolPurgeV2', false);
     for (const c of p.channels || []) {
       if (!c.channelId) continue;
       const cur = State.pool[c.channelId];
+      const src = c.src || cur?.src || 'auto';
+      if (curatedOnly && src !== 'seed' && !State.favorites[c.channelId]) {
+        Cloud.drop('channels', c.channelId);      // et on finit de la retirer de la feuille
+        continue;
+      }
       State.pool[c.channelId] = {
         uploads: c.uploads || cur?.uploads || uploadsOf(c.channelId),
         title  : c.title || cur?.title || '',
-        score  : Math.max(+c.score || 0, cur?.score || 0),
+        /* Plafonné ici aussi : un score emballé venu de la feuille aurait
+           contourné le plafond posé dans addToPool. */
+        score  : Math.min(8, Math.max(+c.score || 0, cur?.score || 0)),
+        src,
+        cats   : cur?.cats || [],
         lastPulled: Math.max(+c.lastPulled || 0, cur?.lastPulled || 0),
         page   : cur?.page || null,
         discoveredAt: +c.discoveredAt || cur?.discoveredAt || Date.now(),
@@ -3739,25 +3766,43 @@ async function boot() {
      Seule exception, l'appareil neuf : sans pool, démarrer tout de suite
      gaspillerait une recherche à 100 unités pour redécouvrir des chaînes déjà
      présentes dans la feuille. On patiente alors, mais pas indéfiniment. */
-  const localReady = Object.keys(State.pool).length >= MIN_POOL_TO_START || Curated.left() > 0;
-  if (Cloud.configured() && !localReady) {
-    await Promise.race([Cloud.pull(), sleep(5000)]);
-  } else if (Cloud.configured()) {
-    /* En arrière-plan : la fusion enrichit le pool pour les recharges suivantes. */
-    Cloud.pull().then(() => { UI.refreshSubsBadge(); UI.toast('Profil synchronisé'); });
-  }
-
-  /* Purge unique. Le pool accumulé par la recherche YouTube contenait des
-     chaînes que l'utilisateur n'a jamais demandées ; l'annuaire les remplace.
-     Après la fusion du profil distant, sinon la feuille les ramènerait. */
-  if (!Store.get('poolPurgeV1', false)) {
+  /**
+   * Purge unique du pool. Elle doit impérativement suivre la fusion du profil
+   * distant : lancée avant, elle assainissait le localStorage puis la feuille
+   * réinjectait aussitôt les mêmes chaînes, la marque `poolPurgeV2` étant déjà
+   * posée. C'est ce qui laissait revenir le contenu écarté à chaque ouverture.
+   */
+  const purgeOnce = () => {
+    /* Version incrémentée : la première purge s'exécutait avant la fusion et
+       posait quand même sa marque, si bien qu'elle ne repassait jamais. */
+    if (Store.get('poolPurgeV2', false)) return;
     const r = Discovery.keepOnlyCurated();
-    Store.set('poolPurgeV1', true);
+    Store.set('poolPurgeV2', true);
     if (r.removed) {
       console.info(`[Shorts FR] ${r.removed} chaînes hors annuaire retirées ` +
                    `(${r.kept} curées, ${r.favoris} suivies conservées)`);
       pendingPurgeNotice = r;
+      Cloud.push();
     }
+  };
+
+  const localReady = Object.keys(State.pool).length >= MIN_POOL_TO_START || Curated.left() > 0;
+  if (Cloud.configured() && !localReady) {
+    await Promise.race([Cloud.pull(), sleep(5000)]);
+    purgeOnce();
+  } else if (Cloud.configured()) {
+    /* En arrière-plan : la fusion enrichit le pool pour les recharges
+       suivantes, et la purge la suit immédiatement. */
+    Cloud.pull().then(() => {
+      purgeOnce();
+      UI.refreshSubsBadge();
+      if (pendingPurgeNotice) {
+        UI.toast(`${pendingPurgeNotice.removed} chaînes hors annuaire retirées`);
+        pendingPurgeNotice = null;
+      } else UI.toast('Profil synchronisé');
+    });
+  } else {
+    purgeOnce();
   }
 
   await UI.tab('foryou');   // l'invite « son » n'apparaît qu'avec la 1re slide (onActiveChange)
