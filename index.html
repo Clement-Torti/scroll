@@ -2168,7 +2168,11 @@ class Feed {
     this.primed = new Set();      // videoId dont le tampon est amorcé
     this.pbTimer = 0;             // rattrapage d'amorçage
     this.activePlaying = false;   // la vidéo affichée a-t-elle démarré ?
-    this.userPaused = false;      // pause demandée par l'utilisateur ?
+    /* Pauses que nous provoquons nous-mêmes — changement de slide, geste de
+       l'utilisateur, amorçage. Le filet de sécurité doit les ignorer : un
+       booléen ne suffisait pas, l'événement PAUSED de la vidéo quittée
+       arrivant alors que l'index actif n'avait pas encore changé. */
+    this.selfPaused = new Set();
     this.unmutedAt = 0;           // instant du dernier dé-sourdinage
     this.active = -1;
     this.loading = false;
@@ -2317,10 +2321,12 @@ class Feed {
 
   setActive(idx) {
     const prev = this.items[this.active];
-    if (prev) { const p = this.players.get(prev.id); if (p) { try { p.pauseVideo(); } catch {} } }
+    if (prev) {
+      const p = this.players.get(prev.id);
+      if (p) { this.selfPaused.add(prev.id); try { p.pauseVideo(); } catch {} }
+    }
     this.active = idx;
     this.activePlaying = false;
-    this.userPaused = false;
     this.unmutedAt = 0;
     const v = this.items[idx];
     if (!v) return;
@@ -2480,19 +2486,28 @@ class Feed {
            ce qui rendait la deuxième vidéo plus lente, pas plus rapide.
            Reprendre à ~0,5 s au lieu de 0 est imperceptible. */
         this.primed.add(v.id);
+        this.selfPaused.add(v.id);
         try { e.target.pauseVideo(); } catch {}
       }
     }
-    /* Certains navigateurs mettent la vidéo en pause quand on la dé-sourdine
-       sans activation dans l'iframe. On le détecte et on repart en sourdine
-       plutôt que de laisser un écran figé. */
-    if (st === YT.PlayerState.PAUSED && this.items[this.active]?.id === v.id
-        && !this.userPaused && this.unmutedAt && Date.now() - this.unmutedAt < 1500) {
-      this.unmutedAt = 0;
-      State.settings.sound = false;
-      save.settings();
-      try { e.target.mute(); e.target.playVideo(); } catch {}
-      UI.soundBlocked();
+    if (st === YT.PlayerState.PAUSED) {
+      /* Pause que nous avons demandée : rien à interpréter. C'est le cas au
+         changement de slide, et le manquer coupait le son pour de bon — la
+         vidéo quittée émettait PAUSED avant la mise à jour de l'index, le
+         filet croyait à un refus du navigateur et désactivait le son. */
+      if (this.selfPaused.has(v.id)) { this.selfPaused.delete(v.id); return; }
+
+      /* Certains navigateurs mettent la vidéo en pause quand on la dé-sourdine
+         sans activation dans l'iframe. On repart alors en sourdine plutôt que
+         de laisser un écran figé. */
+      if (this.items[this.active]?.id === v.id
+          && this.unmutedAt && Date.now() - this.unmutedAt < 1500) {
+        this.unmutedAt = 0;
+        State.settings.sound = false;
+        save.settings();
+        try { e.target.mute(); e.target.playVideo(); } catch {}
+        UI.soundBlocked();
+      }
     }
 
     if (st === YT.PlayerState.ENDED && this.items[this.active]?.id === v.id) {
@@ -2565,7 +2580,7 @@ class Feed {
     if (!p?.getPlayerState) return;
     try {
       const playing = p.getPlayerState() === YT.PlayerState.PLAYING;
-      this.userPaused = playing;
+      if (playing) this.selfPaused.add(v.id);
       playing ? p.pauseVideo() : p.playVideo();
     } catch {}
   }
@@ -2698,7 +2713,7 @@ class Feed {
          en sourdine : `soundOn` prendra le relais à la confirmation de
          lecture. Dé-sourdiner un lecteur à l'arrêt le laissait figé. */
       if (st === YT.PlayerState.PLAYING) this.soundOn(activeId);
-      else { this.userPaused = false; try { p.mute(); p.playVideo(); } catch {} }
+      else { this.selfPaused.delete(activeId); try { p.mute(); p.playVideo(); } catch {} }
     }
     for (const s of this.slides.values()) {
       const b = $('.snd', s);
@@ -2712,6 +2727,7 @@ class Feed {
     for (const p of this.players.values()) { try { p.destroy(); } catch {} }
     this.players.clear();
     this.primed.clear();
+    this.selfPaused.clear();
     for (const s of this.slides.values()) this.io.unobserve(s);
     this.slides.clear();
     this.items = [];

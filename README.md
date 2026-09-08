@@ -470,6 +470,12 @@ chaînes y Réglages, con las estadísticas del filtro y el consumo de cuota.
   toque ocurre en la página y no dentro del iframe de YouTube, que no recibe
   esa activación. Si el navegador aun así la pausa, la app vuelve a silencio y
   lo dice, en vez de dejar una pantalla congelada.
+- Esa red de seguridad distingue las pausas **que la app provoca** (cambio de
+  slide, toque para pausar, precarga) de las que impone el navegador. Sin esa
+  distinción se disparaba en falso: `setActive` pausa el vídeo anterior
+  **antes** de actualizar el índice activo, así que su evento `PAUSED` parecía
+  venir del vídeo en pantalla — y hacer un swipe dentro del segundo y medio
+  desactivaba el sonido de forma permanente.
 - El desenfoque de fondo (`backdrop-filter`) se aplica **solo a la slide
   visible**. Aplicado a todas, el compositor mezclaba dos capas desenfocadas
   por slide durante el scroll, y ahí se perdía la fluidez. El degradado, que
